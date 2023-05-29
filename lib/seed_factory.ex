@@ -305,6 +305,11 @@ defmodule SeedFactory do
   defp prepare_args(params, initial_input, context) do
     initial_input = Map.new(initial_input)
 
+    case Map.keys(initial_input) -- Map.keys(params) do
+      [] -> :noop
+      keys -> raise "Input doesn't match defined params. Redundant keys found: #{inspect(keys)}"
+    end
+
     {input, context} =
       Enum.map_reduce(params, context, fn
         {key, parameter}, context ->

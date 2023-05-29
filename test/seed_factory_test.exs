@@ -182,6 +182,19 @@ defmodule SeedFactoryTest do
                  end
   end
 
+  test "redundant parameters", context do
+    assert_raise RuntimeError,
+                 "Input doesn't match defined params. Redundant keys found: [:unknown_param1, :unknown_param2]",
+                 fn ->
+                   context
+                   |> exec(:create_org,
+                     unknown_param1: "heey",
+                     name: "QWERTY",
+                     unknown_param2: "heey2"
+                   )
+                 end
+  end
+
   def with_diff(context, callback) do
     initial_context_keys = Map.keys(context)
     new_context = callback.()
