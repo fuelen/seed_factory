@@ -134,16 +134,21 @@ defmodule SeedFactory do
   @doc """
   Changes default behaviour of entities assignment.
 
-  Modifies a context so entities engage with context using provided names.
+  Modifies a context, so commands engage with entities in the context using provided names.
+  If a command requires/produces/updates/deletes an entity, the provided name will be used instead of the entity name to get value from the context or modify it.
 
-  It helps to produce the same entity multiple times and assign to the context with different names.
+  It helps to produce the same entity multiple times and assign it to the context with different names.
 
   ## Example
 
-      %{company1: _, company2: _} =
+      # Let's assume that `:product` entity requires `:company` entity.
+      # In this example we create 2 companies, `:product1` will be linked to `:company1`.
+      %{company1: _, company2: _, product1: _} =
         context
-        |> rebind([company: :company1], fn context ->
-          exec(context, :create_company, name: "GitHub")
+        |> rebind([company: :company1, product: :product1], fn context ->
+          context
+          |> exec(:create_company, name: "GitHub")
+          |> produce(:product)
         end)
         |> rebind([company: :company2], fn context ->
           exec(context, :create_company, name: "Microsoft")
