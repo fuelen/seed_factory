@@ -264,15 +264,14 @@ defmodule SeedFactory.SchemaTest do
     end
 
     test "cyclic dependency with multiple commands" do
+      prefix =
+        Regex.escape(
+          "[SeedFactory.SchemaTest.MySchema5]\n commands:\n  found dependency cycles:\n  * "
+        )
+
       assert_raise(
         Spark.Error.DslError,
-        """
-        [SeedFactory.SchemaTest.MySchema5]
-         commands:
-          found dependency cycles:
-          * :create_project - :create_user - :create_org
-        """
-        |> String.trim_trailing(),
+        ~r"#{prefix}((:create_user - :create_org - :create_project)|(:create_project - :create_user - :create_org)|(:create_org - :create_project - :create_user))$",
         fn ->
           defmodule MySchema5 do
             use SeedFactory.Schema
