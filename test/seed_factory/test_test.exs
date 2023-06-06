@@ -2,20 +2,22 @@ defmodule SeedFactory.TestTest do
   use ExUnit.Case, async: true
   use SeedFactory.Test, schema: SchemaExample
 
-  describe "produce macro" do
+  describe "produce macro check 1" do
     produce :org
     produce [:user, :project]
 
-    test "check 1", context do
+    test "check", context do
       for key <- [:org, :user, :project, :office] do
         assert Map.has_key?(context, key)
       end
     end
+  end
 
+  describe "produce macro check 2" do
     produce org: :org1
     produce org: :org2
 
-    test "check 2", context do
+    test "check", context do
       assert Map.has_key?(context, :org1)
       assert Map.has_key?(context, :org2)
     end
