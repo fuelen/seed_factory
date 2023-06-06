@@ -161,18 +161,25 @@ defmodule SeedFactory do
         callback.(context)
 
       rebinding ->
-        if context.__seed_factory_meta__.entities_rebinding do
-          raise "Nested rebinding is not supported"
-        end
-
         rebinding = Map.new(rebinding)
+
+        new_rebinding =
+          Map.merge(
+            context.__seed_factory_meta__.entities_rebinding || %{},
+            rebinding,
+            fn key, v1, v2 ->
+              raise "Rebinding conflict. Cannot rebind `#{inspect(key)}` to `#{inspect(v2)}`. Current value `#{inspect(v1)}`."
+            end
+          )
 
         context
         |> Map.update!(:__seed_factory_meta__, fn meta ->
-          %{meta | entities_rebinding: rebinding}
+          %{meta | entities_rebinding: new_rebinding}
         end)
         |> callback.()
-        |> Map.update!(:__seed_factory_meta__, fn meta -> %{meta | entities_rebinding: nil} end)
+        |> Map.update!(:__seed_factory_meta__, fn meta ->
+          %{meta | entities_rebinding: context.__seed_factory_meta__.entities_rebinding}
+        end)
     end
   end
 
