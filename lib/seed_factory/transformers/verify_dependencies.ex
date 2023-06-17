@@ -50,7 +50,7 @@ defmodule SeedFactory.Transformers.VerifyDependencies do
           end)
 
         raise Spark.Error.DslError,
-          path: [:commands],
+          path: [:root],
           message: "found dependency cycles:#{formatted_cycles}"
     end
   end

@@ -6,7 +6,7 @@ defmodule SeedFactory.Transformers.IndexEntities do
   def transform(dsl_state) do
     command_name_by_entity =
       dsl_state
-      |> Transformer.get_entities([:commands])
+      |> Transformer.get_entities([:root])
       |> Enum.flat_map(fn command ->
         Enum.map(command.producing_instructions, fn instruction ->
           {instruction.entity, command.name}
@@ -28,7 +28,7 @@ defmodule SeedFactory.Transformers.IndexEntities do
 
         [first_command_name | rest_command_names] ->
           raise Spark.Error.DslError,
-            path: [:commands, :command, hd(rest_command_names), :produce, entity],
+            path: [:root, :command, hd(rest_command_names), :produce, entity],
             message:
               "only 1 command can produce the entity. Entity #{inspect(entity)} can already be produced by #{inspect(first_command_name)}"
       end

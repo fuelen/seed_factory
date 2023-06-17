@@ -6,7 +6,7 @@ defmodule SeedFactory.Transformers.IndexCommands do
   def transform(dsl_state) do
     command_by_name =
       dsl_state
-      |> Transformer.get_entities([:commands])
+      |> Transformer.get_entities([:root])
       |> tap(&ensure_unique_names/1)
       |> Map.new(&{&1.name, &1})
 
@@ -22,7 +22,7 @@ defmodule SeedFactory.Transformers.IndexCommands do
 
       {command_name, [_ | _]} ->
         raise Spark.Error.DslError,
-          path: [:commands, :command, command_name],
+          path: [:root, :command, command_name],
           message: "duplicated command name"
     end)
   end

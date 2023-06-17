@@ -41,12 +41,12 @@ defmodule SeedFactory.DSL do
     target: SeedFactory.Command,
     schema: SeedFactory.Command.schema()
   }
-  @commands %Spark.Dsl.Section{
-    name: :commands,
+  @root %Spark.Dsl.Section{
+    name: :root,
     entities: [@command],
     top_level?: true
   }
-  @sections [@commands]
+  @sections [@root]
 
   @moduledoc false
   use Spark.Dsl.Extension,

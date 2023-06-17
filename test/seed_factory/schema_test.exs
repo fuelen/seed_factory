@@ -171,7 +171,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema1]
-         commands -> command -> action1:
+         root -> command -> action1:
           required :resolve option not found, received options: [:name]
         """
         |> String.trim_trailing(),
@@ -191,7 +191,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema2]
-         commands -> command -> action1:
+         root -> command -> action1:
           duplicated command name
         """
         |> String.trim_trailing(),
@@ -220,7 +220,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema3]
-         commands -> command -> action2 -> produce -> foo:
+         root -> command -> action2 -> produce -> foo:
           only 1 command can produce the entity. Entity :foo can already be produced by :action1
         """
         |> String.trim_trailing(),
@@ -247,7 +247,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.Command]
-         commands -> command -> action1:
+         root -> command -> action1:
           at least 1 produce or update directive must be set
         """
         |> String.trim_trailing(),
@@ -266,7 +266,7 @@ defmodule SeedFactory.SchemaTest do
     test "cyclic dependency with multiple commands" do
       prefix =
         Regex.escape(
-          "[SeedFactory.SchemaTest.MySchema5]\n commands:\n  found dependency cycles:\n  * "
+          "[SeedFactory.SchemaTest.MySchema5]\n root:\n  found dependency cycles:\n  * "
         )
 
       assert_raise(
@@ -317,7 +317,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema6]
-         commands:
+         root:
           found dependency cycles:
           * :create_user
         """

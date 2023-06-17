@@ -36,7 +36,7 @@ defmodule SeedFactory.Command do
     if command.producing_instructions == [] and command.updating_instructions == [] do
       raise Spark.Error.DslError,
         module: __MODULE__,
-        path: [:commands, :command, command.name],
+        path: [:root, :command, command.name],
         message: "at least 1 produce or update directive must be set"
     end
   end
