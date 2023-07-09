@@ -7,6 +7,7 @@ defmodule SeedFactory.Transformers.IndexCommands do
     command_by_name =
       dsl_state
       |> Transformer.get_entities([:root])
+      |> Enum.filter(&is_struct(&1, SeedFactory.Command))
       |> tap(&ensure_unique_names/1)
       |> Map.new(&{&1.name, &1})
 

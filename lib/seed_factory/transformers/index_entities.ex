@@ -7,6 +7,7 @@ defmodule SeedFactory.Transformers.IndexEntities do
     command_name_by_entity =
       dsl_state
       |> Transformer.get_entities([:root])
+      |> Enum.filter(&is_struct(&1, SeedFactory.Command))
       |> Enum.flat_map(fn command ->
         Enum.map(command.producing_instructions, fn instruction ->
           {instruction.entity, command.name}

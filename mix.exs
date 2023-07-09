@@ -40,6 +40,7 @@ defmodule SeedFactory.MixProject do
   defp deps do
     [
       {:spark, "~> 1.1"},
+      {:libgraph, "~> 0.16"},
       {:ex_doc, "~> 0.27", only: :dev, runtime: false}
     ]
   end

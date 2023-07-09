@@ -1,6 +1,6 @@
 defmodule SeedFactory.Parameter do
   @moduledoc false
-  defstruct [:name, :source, :params, :map]
+  defstruct [:name, :source, :params, :map, :with_traits]
 
   @schema [
     name: [
@@ -10,7 +10,8 @@ defmodule SeedFactory.Parameter do
     source: [
       type: {:or, [:atom, {:fun, 0}]}
     ],
-    map: [type: {:fun, 1}]
+    map: [type: {:fun, 1}],
+    with_traits: [type: {:list, :atom}]
   ]
 
   def schema, do: @schema

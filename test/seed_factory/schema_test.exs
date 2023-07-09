@@ -7,7 +7,9 @@ defmodule SeedFactory.SchemaTest do
              org: :create_org,
              project: :publish_project,
              draft_project: :create_draft_project,
-             user: :create_user
+             user: :create_user,
+             profile: :create_user,
+             virtual_file: :create_virtual_file
            }
 
     assert Spark.Dsl.Extension.get_persisted(SchemaExample, :commands) == %{
@@ -15,10 +17,32 @@ defmodule SeedFactory.SchemaTest do
                deleting_instructions: [],
                name: :activate_user,
                params: %{
-                 user: %SeedFactory.Parameter{map: nil, name: :user, params: %{}, source: :user}
+                 user: %SeedFactory.Parameter{
+                   map: nil,
+                   name: :user,
+                   params: %{},
+                   source: :user,
+                   with_traits: [:pending]
+                 },
+                 finances: %SeedFactory.Parameter{
+                   name: :finances,
+                   source: nil,
+                   params: %{
+                     plan: %SeedFactory.Parameter{
+                       name: :plan,
+                       source:
+                         &SchemaExample.source_0_generated_0C48BED8A12F038606F3E4AF905059F7/0,
+                       params: %{},
+                       map: nil,
+                       with_traits: nil
+                     }
+                   },
+                   map: nil,
+                   with_traits: nil
+                 }
                },
                producing_instructions: [],
-               resolve: &SchemaExample.resolve_0_generated_DB83438079384E34AA22969B593E86B2/1,
+               resolve: &SchemaExample.resolve_0_generated_A318D00A9A01DC9FF758958FF2E3647B/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
                ]
@@ -31,13 +55,15 @@ defmodule SeedFactory.SchemaTest do
                    map: nil,
                    name: :name,
                    params: %{},
-                   source: &SchemaExample.source_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0
+                   source: &SchemaExample.source_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                   with_traits: nil
                  },
                  office: %SeedFactory.Parameter{
                    map: nil,
                    name: :office,
                    params: %{},
-                   source: :office
+                   source: :office,
+                   with_traits: nil
                  }
                },
                producing_instructions: [
@@ -54,9 +80,16 @@ defmodule SeedFactory.SchemaTest do
                    map: nil,
                    name: :name,
                    params: %{},
-                   source: &SchemaExample.source_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0
+                   source: &SchemaExample.source_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                   with_traits: nil
                  },
-                 org: %SeedFactory.Parameter{map: nil, name: :org, params: %{}, source: :org}
+                 org: %SeedFactory.Parameter{
+                   map: nil,
+                   name: :org,
+                   params: %{},
+                   source: :org,
+                   with_traits: nil
+                 }
                },
                producing_instructions: [
                  %SeedFactory.ProducingInstruction{entity: :office, from: :office}
@@ -77,23 +110,27 @@ defmodule SeedFactory.SchemaTest do
                        name: :city,
                        params: %{},
                        source:
-                         &SchemaExample.source_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0
+                         &SchemaExample.source_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                       with_traits: nil
                      },
                      country: %SeedFactory.Parameter{
                        map: nil,
                        name: :country,
                        params: %{},
                        source:
-                         &SchemaExample.source_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0
+                         &SchemaExample.source_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                       with_traits: nil
                      }
                    },
-                   source: nil
+                   source: nil,
+                   with_traits: nil
                  },
                  name: %SeedFactory.Parameter{
                    map: nil,
                    name: :name,
                    params: %{},
-                   source: &SchemaExample.source_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0
+                   source: &SchemaExample.source_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                   with_traits: nil
                  }
                },
                producing_instructions: [
@@ -110,19 +147,36 @@ defmodule SeedFactory.SchemaTest do
                    map: nil,
                    name: :name,
                    params: %{},
-                   source: &SchemaExample.source_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0
+                   source: &SchemaExample.source_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                   with_traits: nil
                  },
                  office_id: %SeedFactory.Parameter{
                    map: &SchemaExample.map_0_generated_16C1099E6C1F2F2BF413FCD46A594112/1,
                    name: :office_id,
                    params: %{},
-                   source: :office
+                   source: :office,
+                   with_traits: nil
+                 },
+                 contacts_confirmed?: %SeedFactory.Parameter{
+                   name: :contacts_confirmed?,
+                   source: &SchemaExample.source_0_generated_04DBDDDB37365C52E20F9B2A5356E5C4/0,
+                   params: %{},
+                   map: nil,
+                   with_traits: nil
+                 },
+                 role: %SeedFactory.Parameter{
+                   name: :role,
+                   source: &SchemaExample.source_0_generated_798FA5AC2FD46821DD81B004373E764A/0,
+                   params: %{},
+                   map: nil,
+                   with_traits: nil
                  }
                },
                producing_instructions: [
-                 %SeedFactory.ProducingInstruction{entity: :user, from: :user}
+                 %SeedFactory.ProducingInstruction{entity: :user, from: :user},
+                 %SeedFactory.ProducingInstruction{entity: :profile, from: :profile}
                ],
-               resolve: &SchemaExample.resolve_0_generated_C6863B90DC6B70859AEA378FC9A9DF24/1,
+               resolve: &SchemaExample.resolve_0_generated_B56A668B5121BBAD14A602F47827541E/1,
                updating_instructions: []
              },
              publish_project: %SeedFactory.Command{
@@ -133,13 +187,21 @@ defmodule SeedFactory.SchemaTest do
                    map: nil,
                    name: :project,
                    params: %{},
-                   source: :draft_project
+                   source: :draft_project,
+                   with_traits: nil
+                 },
+                 published_by: %SeedFactory.Parameter{
+                   name: :published_by,
+                   source: :user,
+                   params: %{},
+                   map: nil,
+                   with_traits: [:active]
                  }
                },
                producing_instructions: [
                  %SeedFactory.ProducingInstruction{entity: :project, from: :project}
                ],
-               resolve: &SchemaExample.resolve_0_generated_A5D8F24A9A1826648663280E85EEFD7A/1,
+               resolve: &SchemaExample.resolve_0_generated_499072EB572D4497C8697813784328E1/1,
                updating_instructions: []
              },
              raise_exception: %SeedFactory.Command{
@@ -161,6 +223,81 @@ defmodule SeedFactory.SchemaTest do
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
                ]
+             },
+             create_virtual_file: %SeedFactory.Command{
+               name: :create_virtual_file,
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{entity: :virtual_file, from: :file}
+               ],
+               updating_instructions: [
+                 %SeedFactory.UpdatingInstruction{entity: :project, from: :project}
+               ],
+               deleting_instructions: [],
+               resolve: &SchemaExample.resolve_0_generated_2B36E339936F23FD426D06D5490D9BC3/1,
+               params: %{
+                 author: %SeedFactory.Parameter{
+                   name: :author,
+                   source: :user,
+                   params: %{},
+                   map: nil,
+                   with_traits: [:active, :admin]
+                 },
+                 content: %SeedFactory.Parameter{
+                   name: :content,
+                   source: &SchemaExample.source_0_generated_0989761FCDF7BA5D3C1BD3C8885F03BC/0,
+                   params: %{},
+                   map: nil,
+                   with_traits: nil
+                 },
+                 privacy: %SeedFactory.Parameter{
+                   name: :privacy,
+                   source: &SchemaExample.source_0_generated_391F8284104414D202A3E9E8FBD06D2C/0,
+                   params: %{},
+                   map: nil,
+                   with_traits: nil
+                 },
+                 project: %SeedFactory.Parameter{
+                   name: :project,
+                   source: :project,
+                   params: %{},
+                   map: nil,
+                   with_traits: nil
+                 }
+               }
+             },
+             delete_user: %SeedFactory.Command{
+               name: :delete_user,
+               producing_instructions: [],
+               updating_instructions: [],
+               deleting_instructions: [%SeedFactory.DeletingInstruction{entity: :user}],
+               resolve: &SchemaExample.resolve_0_generated_BB7D80C861BBA279E03166977C76BBCF/1,
+               params: %{
+                 user: %SeedFactory.Parameter{
+                   name: :user,
+                   source: :user,
+                   params: %{},
+                   map: nil,
+                   with_traits: [:active]
+                 }
+               }
+             },
+             suspend_user: %SeedFactory.Command{
+               name: :suspend_user,
+               producing_instructions: [],
+               updating_instructions: [
+                 %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
+               ],
+               deleting_instructions: [],
+               resolve: &SchemaExample.resolve_0_generated_C0BEBF480312AD1B637AF84555E857BE/1,
+               params: %{
+                 user: %SeedFactory.Parameter{
+                   name: :user,
+                   source: :user,
+                   params: %{},
+                   map: nil,
+                   with_traits: [:active]
+                 }
+               }
              }
            }
   end
@@ -242,13 +379,13 @@ defmodule SeedFactory.SchemaTest do
       )
     end
 
-    test "command without produce and update directives" do
+    test "command without produce, update and delete directives" do
       assert_raise(
         Spark.Error.DslError,
         """
         [SeedFactory.Command]
          root -> command -> action1:
-          at least 1 produce or update directive must be set
+          at least 1 produce, update or delete directive must be set
         """
         |> String.trim_trailing(),
         fn ->
@@ -331,6 +468,79 @@ defmodule SeedFactory.SchemaTest do
               resolve(fn _args -> {:ok, %{}} end)
 
               produce :user, from: :user
+            end
+          end
+        end
+      )
+    end
+
+    test "duplicated traits" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.SchemaTest.MySchema7]
+         root -> trait -> pending -> user:
+          duplicated trait
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema7 do
+            use SeedFactory.Schema
+
+            trait :pending, :user do
+              exec(:create_user)
+            end
+
+            trait :pending, :user do
+              exec(:create_user)
+            end
+          end
+        end
+      )
+    end
+
+    test "multiple instructions for the same entity within the command" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.Command]
+         root -> command -> create_user:
+          cannot apply multiple instructions on the same entity (:user)
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema7 do
+            use SeedFactory.Schema
+
+            command :create_user do
+              param(:user, :user)
+              resolve(fn _args -> {:ok, %{}} end)
+
+              produce :user, from: :user
+              update :user, from: :user
+            end
+          end
+        end
+      )
+
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.Command]
+         root -> command -> create_user:
+          cannot apply multiple instructions on the same entity (:user)
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema8 do
+            use SeedFactory.Schema
+
+            command :create_user do
+              param(:user, :user)
+              resolve(fn _args -> {:ok, %{}} end)
+
+              produce :user, from: :user
+              delete :user
             end
           end
         end

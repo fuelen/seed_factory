@@ -22,4 +22,13 @@ defmodule SeedFactory.TestTest do
       assert Map.has_key?(context, :org2)
     end
   end
+
+  describe "produce macro check 3" do
+    produce project: [:with_virtual_file]
+
+    test "check", context do
+      assert Map.has_key?(context, :project)
+      assert Map.has_key?(context, :virtual_file)
+    end
+  end
 end

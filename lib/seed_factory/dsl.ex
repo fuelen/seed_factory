@@ -41,9 +41,24 @@ defmodule SeedFactory.DSL do
     target: SeedFactory.Command,
     schema: SeedFactory.Command.schema()
   }
+
+  @exec_step %Spark.Dsl.Entity{
+    name: :exec,
+    args: [:command_name],
+    target: SeedFactory.ExecStep,
+    schema: SeedFactory.ExecStep.schema()
+  }
+  @trait %Spark.Dsl.Entity{
+    name: :trait,
+    args: [:name, :entity],
+    entities: [exec_step: [@exec_step]],
+    singleton_entity_keys: [:exec_step],
+    target: SeedFactory.Trait,
+    schema: SeedFactory.Trait.schema()
+  }
   @root %Spark.Dsl.Section{
     name: :root,
-    entities: [@command],
+    entities: [@command, @trait],
     top_level?: true
   }
   @sections [@root]
@@ -54,6 +69,7 @@ defmodule SeedFactory.DSL do
     transformers: [
       SeedFactory.Transformers.IndexCommands,
       SeedFactory.Transformers.IndexEntities,
+      SeedFactory.Transformers.IndexTraits,
       SeedFactory.Transformers.VerifyDependencies
     ]
 end
