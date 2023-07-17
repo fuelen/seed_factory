@@ -509,7 +509,7 @@ defmodule SeedFactory do
           if Map.has_key?(initial_input, key) do
             acc
           else
-            trait_names = List.wrap(parameter.with_traits)
+            trait_names = parameter.with_traits || []
             Map.update(acc, entity_name, trait_names, &(trait_names ++ &1))
           end
       end
