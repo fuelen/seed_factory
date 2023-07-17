@@ -354,8 +354,7 @@ defmodule SeedFactory do
             if trait_names == [] do
               acc
             else
-              current_trait_names =
-                context.__seed_factory_meta__.current_traits[binding_name] || []
+              current_trait_names = current_trait_names(context, binding_name)
 
               absent_trait_names = trait_names -- current_trait_names
 
@@ -662,7 +661,7 @@ defmodule SeedFactory do
 
           possible_traits ->
             binding_name = binding_name(context, entity)
-            current_trait_names = context.__seed_factory_meta__.current_traits[binding_name] || []
+            current_trait_names = current_trait_names(context, binding_name)
 
             {remove, add} =
               possible_traits
@@ -688,6 +687,10 @@ defmodule SeedFactory do
       end
     )
     |> delete_from_current_traits(command.deleting_instructions)
+  end
+
+  defp current_trait_names(context, binding_name) do
+    context.__seed_factory_meta__.current_traits[binding_name] || []
   end
 
   defp delete_from_current_traits(context, deleting_instructions) do
