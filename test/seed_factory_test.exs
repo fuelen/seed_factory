@@ -121,12 +121,18 @@ defmodule SeedFactoryTest do
                  end
   end
 
-  test "create entity specified as an atom", context do
+  test "produce entity specified as an atom", context do
     {_context, diff} = with_diff(context, fn -> produce(context, :project) end)
     assert diff == %{added: [:office, :org, :profile, :project, :user], deleted: [], updated: []}
   end
 
-  test "create entities specified as a simple list", context do
+  test "produce unknown entity", context do
+    assert_raise ArgumentError, "Unknown entity :unknown_entity", fn ->
+      produce(context, :unknown_entity)
+    end
+  end
+
+  test "produce entities specified as a simple list", context do
     {_context, diff} = with_diff(context, fn -> produce(context, [:draft_project, :user]) end)
 
     assert diff == %{
@@ -136,7 +142,7 @@ defmodule SeedFactoryTest do
            }
   end
 
-  test "create entities with rebinding", context do
+  test "produce entities with rebinding", context do
     {context, diff} =
       with_diff(context, fn ->
         context

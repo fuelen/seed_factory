@@ -333,8 +333,6 @@ defmodule SeedFactory do
          initial_requirements,
          restrictions
        ) do
-    command_name_by_entity_name = context.__seed_factory_meta__.entities
-
     {requirements, command_names} =
       Enum.reduce(
         entities_with_trait_names,
@@ -398,7 +396,7 @@ defmodule SeedFactory do
             end
           else
             if trait_names == [] do
-              command_name = command_name_by_entity_name[entity_name]
+              command_name = fetch_command_name_by_entity_name!(context, entity_name)
 
               {add_command_to_requirements(requirements, command_name, required_by, []),
                MapSet.put(command_names, command_name)}
@@ -430,6 +428,13 @@ defmodule SeedFactory do
         command_requirements(context, command, %{}, command.name, requirements, restrictions)
       end
     end)
+  end
+
+  defp fetch_command_name_by_entity_name!(context, entity_name) do
+    case Map.fetch(context.__seed_factory_meta__.entities, entity_name) do
+      {:ok, command_name} -> command_name
+      :error -> raise ArgumentError, "Unknown entity #{inspect(entity_name)}"
+    end
   end
 
   defp ensure_no_restrictions!(traits, restrictions, entity_name, scenario) do
