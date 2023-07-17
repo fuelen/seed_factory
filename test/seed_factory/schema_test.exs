@@ -487,6 +487,12 @@ defmodule SeedFactory.SchemaTest do
           defmodule MySchema7 do
             use SeedFactory.Schema
 
+            command :create_user do
+              resolve(fn _args -> {:ok, %{}} end)
+
+              produce :user, from: :user
+            end
+
             trait :pending, :user do
               exec(:create_user)
             end
@@ -509,7 +515,7 @@ defmodule SeedFactory.SchemaTest do
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema7 do
+          defmodule MySchema8 do
             use SeedFactory.Schema
 
             command :create_user do
@@ -532,7 +538,7 @@ defmodule SeedFactory.SchemaTest do
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema8 do
+          defmodule MySchema9 do
             use SeedFactory.Schema
 
             command :create_user do
@@ -541,6 +547,88 @@ defmodule SeedFactory.SchemaTest do
 
               produce :user, from: :user
               delete :user
+            end
+          end
+        end
+      )
+    end
+
+    test "invalid command in exec step" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.SchemaTest.MySchema10]
+         root -> trait -> pending -> user:
+          contains an exec step to the :create_org command which neither produces nor updates the :user entity
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema10 do
+            use SeedFactory.Schema
+
+            command :create_org do
+              resolve(fn _args -> {:ok, %{}} end)
+
+              produce :org, from: :org
+            end
+
+            command :create_user do
+              param :org, :org
+              resolve(fn _args -> {:ok, %{}} end)
+
+              produce :user, from: :user
+            end
+
+            trait :pending, :user do
+              exec(:create_org)
+            end
+          end
+        end
+      )
+    end
+
+    test "defining trait for an unknown command" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.SchemaTest.MySchema11]
+         root -> trait -> pending -> org:
+          unknown command :create_new_org
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema11 do
+            use SeedFactory.Schema
+
+            command :create_org do
+              resolve(fn _args -> {:ok, %{}} end)
+
+              produce :org, from: :org
+            end
+
+            trait :pending, :org do
+              exec(:create_new_org)
+            end
+          end
+        end
+      )
+    end
+
+    test "defining trait for an unknown entity" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.SchemaTest.MySchema12]
+         root -> trait -> pending -> unknown:
+          unknown entity
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema12 do
+            use SeedFactory.Schema
+
+            trait :pending, :unknown do
+              exec(:create_org)
             end
           end
         end
