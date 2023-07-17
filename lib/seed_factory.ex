@@ -204,23 +204,29 @@ defmodule SeedFactory do
         callback.(context)
 
       rebinding ->
-        rebinding = Map.new(rebinding)
-
-        new_rebinding =
-          Map.merge(
-            context.__seed_factory_meta__.entities_rebinding || %{},
-            rebinding,
-            fn key, v1, v2 ->
-              raise ArgumentError,
-                    "Rebinding conflict. Cannot rebind `#{inspect(key)}` to `#{inspect(v2)}`. Current value `#{inspect(v1)}`."
-            end
-          )
+        current_rebinding = context.__seed_factory_meta__.entities_rebinding
+        new_rebinding = merge_rebinding!(current_rebinding, Map.new(rebinding))
 
         context
         |> put_meta(:entities_rebinding, new_rebinding)
         |> callback.()
-        |> put_meta(:entities_rebinding, context.__seed_factory_meta__.entities_rebinding)
+        |> put_meta(:entities_rebinding, current_rebinding)
     end
+  end
+
+  defp merge_rebinding!(current_rebinding, new_rebinding) do
+    Map.merge(
+      current_rebinding,
+      new_rebinding,
+      fn
+        _key, v, v ->
+          v
+
+        key, v1, v2 ->
+          raise ArgumentError,
+                "Rebinding conflict. Cannot rebind `#{inspect(key)}` to `#{inspect(v2)}`. Current value `#{inspect(v1)}`."
+      end
+    )
   end
 
   @doc """

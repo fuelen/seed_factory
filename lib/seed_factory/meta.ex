@@ -12,7 +12,7 @@ defmodule SeedFactory.Meta do
 
   def new(schema) do
     %__MODULE__{
-      entities_rebinding: nil,
+      entities_rebinding: %{},
       current_traits: %{},
       create_dependent_entities?: true,
       traits: Spark.Dsl.Extension.get_persisted(schema, :traits),

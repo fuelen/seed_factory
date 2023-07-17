@@ -29,42 +29,59 @@ defmodule SeedFactoryTest do
     assert context.user1.name == "John Doe"
   end
 
-  test "nested rebinging", context do
-    {context, diff} =
-      with_diff(context, fn ->
-        rebind(context, [org: :org1], fn context ->
-          context
-          |> produce(office: :office11)
-          |> produce(office: :office12)
+  describe "nested rebinding" do
+    test "rebind + produce", context do
+      {context, diff} =
+        with_diff(context, fn ->
+          rebind(context, [org: :org1], fn context ->
+            context
+            |> produce(office: :office11)
+            |> produce(office: :office12)
+          end)
+          |> rebind([org: :org2], fn context ->
+            context
+            |> produce(office: :office21)
+            |> produce(office: :office22)
+          end)
         end)
-        |> rebind([org: :org2], fn context ->
-          context
-          |> produce(office: :office21)
-          |> produce(office: :office22)
+
+      assert diff == %{
+               added: [:office11, :office12, :office21, :office22, :org1, :org2],
+               deleted: [],
+               updated: []
+             }
+
+      assert context.office11.org_id == context.org1.id
+      assert context.office12.org_id == context.org1.id
+
+      assert context.office21.org_id == context.org2.id
+      assert context.office22.org_id == context.org2.id
+    end
+
+    test "same binding", context do
+      {_context, diff} =
+        with_diff(context, fn ->
+          rebind(context, [org: :org1], fn context ->
+            rebind(context, [org: :org1], fn context ->
+              produce(context, [:org])
+            end)
+          end)
         end)
-      end)
 
-    assert diff == %{
-             added: [:office11, :office12, :office21, :office22, :org1, :org2],
-             deleted: [],
-             updated: []
-           }
+      assert diff == %{added: [:org1], deleted: [], updated: []}
+    end
 
-    assert context.office11.org_id == context.org1.id
-    assert context.office12.org_id == context.org1.id
-
-    assert context.office21.org_id == context.org2.id
-    assert context.office22.org_id == context.org2.id
-
-    assert_raise ArgumentError,
-                 "Rebinding conflict. Cannot rebind `:org` to `:org2`. Current value `:org1`.",
-                 fn ->
-                   rebind(context, [org: :org1], fn context ->
-                     rebind(context, [org: :org2], fn context ->
-                       produce(context, [:org])
+    test "conflicting binding", context do
+      assert_raise ArgumentError,
+                   "Rebinding conflict. Cannot rebind `:org` to `:org2`. Current value `:org1`.",
+                   fn ->
+                     rebind(context, [org: :org1], fn context ->
+                       rebind(context, [org: :org2], fn context ->
+                         produce(context, [:org])
+                       end)
                      end)
-                   end)
-                 end
+                   end
+    end
   end
 
   test "resolver returns error", context do
