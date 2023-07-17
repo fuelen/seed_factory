@@ -16,6 +16,9 @@ defmodule SeedFactory.MixProject do
         main: "SeedFactory",
         source_url: @source_url,
         source_ref: "v#{@version}"
+      ],
+      test_coverage: [
+        ignore_modules: [~r/^SeedFactory\.DSL\.Root/, ~r/^Inspect\./]
       ]
     ]
   end
