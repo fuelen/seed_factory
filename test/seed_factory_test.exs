@@ -84,7 +84,7 @@ defmodule SeedFactoryTest do
     end
   end
 
-  test "resolver returns error", context do
+  test "resolver returns an error", context do
     assert_raise RuntimeError,
                  ~s|Unable to execue :resolve_with_error command: %{message: "OOPS", other_key: :data}|,
                  fn ->
@@ -239,6 +239,15 @@ defmodule SeedFactoryTest do
     assert context.office.org_id == context.org2.id
     assert diff == %{added: [:office], deleted: [], updated: []}
   end
+
+  test "exec unknown command", context do
+    assert_raise ArgumentError,
+                 "Unknown command :unknown_command",
+                 fn ->
+                   exec(context, :unknown_command)
+                 end
+  end
+
 
   test "double execution of the same command", context do
     assert_raise ArgumentError,

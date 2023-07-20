@@ -293,9 +293,7 @@ defmodule SeedFactory do
     produce(context, [entity])
   end
 
-  defp anything_was_produced_by_command?(context, command_name) do
-    command = context.__seed_factory_meta__.commands[command_name]
-
+  defp anything_was_produced_by_command?(context, command) do
     Enum.any?(command.producing_instructions, fn instruction ->
       binding_name = binding_name(context, instruction.entity)
       Map.has_key?(context, binding_name)
@@ -425,14 +423,22 @@ defmodule SeedFactory do
       )
 
     Enum.reduce(command_names, requirements, fn command_name, requirements ->
+      command = Map.fetch!(context.__seed_factory_meta__.commands, command_name)
+
       if Map.has_key?(initial_requirements, command_name) or
-           anything_was_produced_by_command?(context, command_name) do
+           anything_was_produced_by_command?(context, command) do
         requirements
       else
-        command = Map.fetch!(context.__seed_factory_meta__.commands, command_name)
         command_requirements(context, command, %{}, command.name, requirements, restrictions)
       end
     end)
+  end
+
+  defp fetch_command_by_name!(context, command_name) do
+    case Map.fetch(context.__seed_factory_meta__.commands, command_name) do
+      {:ok, command} -> command
+      :error -> raise ArgumentError, "Unknown command #{inspect(command_name)}"
+    end
   end
 
   defp fetch_command_name_by_entity_name!(context, entity_name) do
@@ -592,7 +598,7 @@ defmodule SeedFactory do
   """
   @spec exec(context(), command_name :: atom(), initial_input :: map() | keyword()) :: context()
   def exec(context, command_name, initial_input \\ %{}) do
-    command = Map.fetch!(context.__seed_factory_meta__.commands, command_name)
+    command = fetch_command_by_name!(context, command_name)
 
     initial_input = Map.new(initial_input)
     context = create_dependent_entities_if_needed(context, command, initial_input)
