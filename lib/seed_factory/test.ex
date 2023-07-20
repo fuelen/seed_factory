@@ -12,7 +12,7 @@ defmodule SeedFactory.Test do
   """
   defmacro __using__(opts) do
     quote bind_quoted: [opts: opts] do
-      import SeedFactory, only: [rebind: 3, produce: 2, exec: 2, exec: 3]
+      import SeedFactory, only: [rebind: 3, produce: 2, exec: 2, exec: 3, pre_exec: 2, pre_exec: 3]
       import SeedFactory.Test
 
       setup_all context do

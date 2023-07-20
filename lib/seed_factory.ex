@@ -618,6 +618,45 @@ defmodule SeedFactory do
     end
   end
 
+
+
+  @doc """
+  Creates dependencies needed to execute the command.
+
+  This is useful, when you're interested in side effects and you want to execute the command multiple times with the same input entities.
+
+  ## Example
+
+      # Function :create_user produces multiple entities (:user and :profile), so if you want to
+      # produce multiple users using a sequence of `exec` calls, you have to write this:
+      %{user1: user1, user2: user2} =
+        context
+        |> rebind([user: :user1, profile: :profile1], &exec(:create_user, role: :admin))
+        |> rebind([user: :user2, profile: :profile2], &exec(:create_user, role: :admin))
+
+      # The code above is a bit wordy in a case when all we need are :user entitities. We have to write
+      # rebinding for :profile even though we are't interested in it.
+
+      # A less wordy alternative is:
+      context = produce(context, list_of_all_dependencies_with_their_traits)
+      %{user: user1} = exec(context, :create_user)
+      %{user: user2} = exec(context, :create_user)
+
+      # However, you have to explicitly enumerate all the dependencies.
+      # It can be more compact with `pre_exec` function:
+      context = pre_exec(context, :create_user)
+      %{user: user1} = exec(context, :create_user)
+      %{user: user2} = exec(context, :create_user)
+  """
+  @spec pre_exec(context(), command_name :: atom(), initial_input :: map() | keyword()) ::
+          context()
+  def pre_exec(context, command_name, initial_input \\ %{}) do
+    command = fetch_command_by_name!(context, command_name)
+
+    initial_input = Map.new(initial_input)
+    create_dependent_entities_if_needed(context, command, initial_input)
+  end
+
   defp create_dependent_entities_if_needed(context, command, initial_input) do
     lock_creation_of_dependent_entities(context, fn context ->
       context

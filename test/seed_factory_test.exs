@@ -248,7 +248,6 @@ defmodule SeedFactoryTest do
                  end
   end
 
-
   test "double execution of the same command", context do
     assert_raise ArgumentError,
                  "Cannot put entity :org to the context: key :org already exists",
@@ -461,6 +460,22 @@ defmodule SeedFactoryTest do
       end)
       |> assert_trait(:project, [:with_virtual_file, :with_virtual_file])
     end
+  end
+
+  test "pre_exec", context do
+    {_context, diff} =
+      with_diff(context, fn ->
+        pre_exec(context, :create_user)
+      end)
+
+    assert diff == %{added: [:office, :org], deleted: [], updated: []}
+
+    {_context, diff} =
+      with_diff(context, fn ->
+        pre_exec(context, :create_user, office_id: :fake_office_id)
+      end)
+
+    assert diff == %{added: [], deleted: [], updated: []}
   end
 
   defp assert_trait(context, binding_name, expected_traits) when is_list(expected_traits) do
