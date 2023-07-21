@@ -253,29 +253,8 @@ defmodule SeedFactory do
               | {entity_name(), [trait_name :: atom() | {:as, rebind_as :: atom()}]}
             ]
         ) :: context()
-  def produce(context, entities) when is_list(entities) do
-    {entities_with_trait_names, rebinding} =
-      Enum.map_reduce(entities, [], fn
-        {entity_name, rebind_as} = rebinding_rule, acc when is_atom(rebind_as) ->
-          {{entity_name, []}, [rebinding_rule | acc]}
-
-        {entity_name, []}, acc ->
-          {{entity_name, []}, acc}
-
-        {entity_name, list}, acc when is_list(list) ->
-          {trait_names, opts} = Enum.split_while(list, &is_atom/1)
-
-          acc =
-            case opts[:as] do
-              nil -> acc
-              rebind_as -> [{entity_name, rebind_as} | acc]
-            end
-
-          {{entity_name, trait_names}, acc}
-
-        entity_name, acc ->
-          {{entity_name, []}, acc}
-      end)
+  def produce(context, entities_and_rebinding) when is_list(entities_and_rebinding) do
+    {entities_with_trait_names, rebinding} = split_entities_and_rebinding(entities_and_rebinding)
 
     rebind(context, rebinding, fn context ->
       context
@@ -291,6 +270,30 @@ defmodule SeedFactory do
 
   def produce(context, entity) when is_atom(entity) do
     produce(context, [entity])
+  end
+
+  defp split_entities_and_rebinding(entities_and_rebinding) do
+    Enum.map_reduce(entities_and_rebinding, [], fn
+      {entity_name, rebind_as} = rebinding_rule, acc when is_atom(rebind_as) ->
+        {{entity_name, []}, [rebinding_rule | acc]}
+
+      {entity_name, []}, acc ->
+        {{entity_name, []}, acc}
+
+      {entity_name, list}, acc when is_list(list) ->
+        {trait_names, opts} = Enum.split_while(list, &is_atom/1)
+
+        acc =
+          case opts[:as] do
+            nil -> acc
+            rebind_as -> [{entity_name, rebind_as} | acc]
+          end
+
+        {{entity_name, trait_names}, acc}
+
+      entity_name, acc ->
+        {{entity_name, []}, acc}
+    end)
   end
 
   defp anything_was_produced_by_command?(context, command) do
@@ -617,8 +620,6 @@ defmodule SeedFactory do
         raise "Unable to execue #{inspect(command_name)} command: #{inspect(error)}"
     end
   end
-
-
 
   @doc """
   Creates dependencies needed to execute the command.
