@@ -1,5 +1,5 @@
 defmodule SeedFactory.SchemaTest do
-  use ExUnit.Case, asyn: true
+  use ExUnit.Case, async: true
 
   test "persisted data" do
     assert Spark.Dsl.Extension.get_persisted(SchemaExample, :entities) == %{
