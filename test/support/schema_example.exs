@@ -175,58 +175,58 @@ defmodule SchemaExample do
   end
 
   trait :pending, :user do
-    exec(:create_user)
+    exec :create_user
   end
 
   trait :active, :user do
-    from(:pending)
-    exec(:activate_user)
+    from :pending
+    exec :activate_user
   end
 
   trait :suspended, :user do
-    from(:active)
-    exec(:suspend_user)
+    from :active
+    exec :suspend_user
   end
 
   trait :normal, :user do
-    exec(:create_user, args_pattern: %{role: :normal})
+    exec :create_user, args_pattern: %{role: :normal}
   end
 
   trait :admin, :user do
-    exec(:create_user, args_pattern: %{role: :admin})
+    exec :create_user, args_pattern: %{role: :admin}
   end
 
   trait :unknown_plan, :user do
-    exec(:create_user)
+    exec :create_user
   end
 
   trait :contacts_unconfirmed, :profile do
-    exec(:create_user, args_pattern: %{contacts_confirmed?: false})
+    exec :create_user, args_pattern: %{contacts_confirmed?: false}
   end
 
   trait :contacts_confirmed, :profile do
-    exec(:create_user, args_pattern: %{contacts_confirmed?: true})
+    exec :create_user, args_pattern: %{contacts_confirmed?: true}
   end
 
   trait :public, :virtual_file do
-    exec(:create_virtual_file, args_pattern: %{privacy: :public})
+    exec :create_virtual_file, args_pattern: %{privacy: :public}
   end
 
   trait :private, :virtual_file do
-    exec(:create_virtual_file, args_pattern: %{privacy: :private})
+    exec :create_virtual_file, args_pattern: %{privacy: :private}
   end
 
   trait :free_plan, :user do
-    from(:unknown_plan)
-    exec(:activate_user, args_pattern: %{finances: %{plan: :free}})
+    from :unknown_plan
+    exec :activate_user, args_pattern: %{finances: %{plan: :free}}
   end
 
   trait :paid_plan, :user do
-    from(:unknown_plan)
-    exec(:activate_user, args_pattern: %{finances: %{plan: :paid}})
+    from :unknown_plan
+    exec :activate_user, args_pattern: %{finances: %{plan: :paid}}
   end
 
   trait :with_virtual_file, :project do
-    exec(:create_virtual_file)
+    exec :create_virtual_file
   end
 end
