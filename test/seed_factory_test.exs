@@ -478,6 +478,22 @@ defmodule SeedFactoryTest do
     assert diff == %{added: [], deleted: [], updated: []}
   end
 
+  test "pre_produce", context do
+    {_context, diff} =
+      with_diff(context, fn ->
+        pre_produce(context, user: [:active])
+      end)
+
+    assert diff == %{added: [:office, :org], deleted: [], updated: []}
+
+    {_context, diff} =
+      with_diff(context, fn ->
+        pre_produce(context, [:office, user: [:active]])
+      end)
+
+    assert diff == %{added: [:org], deleted: [], updated: []}
+  end
+
   defp assert_trait(context, binding_name, expected_traits) when is_list(expected_traits) do
     current_traits = Map.fetch!(context.__seed_factory_meta__.current_traits, binding_name)
     assert Enum.sort(expected_traits) == Enum.sort(current_traits)

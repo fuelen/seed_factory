@@ -272,6 +272,46 @@ defmodule SeedFactory do
     produce(context, [entity])
   end
 
+  @doc """
+  Produces dependencies needed for specified entities.
+
+  ## Example
+
+      # pre_produce produces a company and puts it into context,
+      # so produced user1 and user2 will belong to the same company
+      context = pre_produce(context, :user)
+      %{user: user1} = pre_produce(context, :user)
+      %{user: user2} = pre_produce(context, :user)
+  """
+  @spec pre_produce(
+          context(),
+          entity_name()
+          | [
+              entity_name()
+              | rebinding_rule()
+              | {entity_name(), [trait_name :: atom() | {:as, rebind_as :: atom()}]}
+            ]
+        ) :: context()
+  def pre_produce(context, entities_and_rebinding) when is_list(entities_and_rebinding) do
+    {entities_with_trait_names, rebinding} = split_entities_and_rebinding(entities_and_rebinding)
+
+    rebind(context, rebinding, fn context ->
+      context
+      |> requirements_of_entities_with_trait_names(
+        entities_with_trait_names,
+        nil,
+        %{},
+        Map.new(entities_with_trait_names)
+      )
+      |> Map.reject(fn {_key, %{required_by: required_by}} -> nil in required_by end)
+      |> exec_requirements(context)
+    end)
+  end
+
+  def pre_produce(context, entity) when is_atom(entity) do
+    produce(context, [entity])
+  end
+
   defp split_entities_and_rebinding(entities_and_rebinding) do
     Enum.map_reduce(entities_and_rebinding, [], fn
       {entity_name, rebind_as} = rebinding_rule, acc when is_atom(rebind_as) ->
@@ -681,8 +721,13 @@ defmodule SeedFactory do
     requirements
     |> topologically_sorted_commands()
     |> Enum.reduce(context, fn
-      nil, context -> context
-      command_name, context -> exec(context, command_name, requirements[command_name].args)
+      command_name, context ->
+        # command should not be executed if it can be found in `required_by` field but not in `requirements` by key .
+        # it can't be found if it is nil (top level required_by value) or if it was removed by `pre_exec` function
+        case requirements[command_name] do
+          nil -> context
+          %{args: args} -> exec(context, command_name, args)
+        end
     end)
   end
 

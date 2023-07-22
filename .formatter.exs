@@ -1,5 +1,15 @@
 # Used by "mix format"
-locals_without_parens = [produce: 2, update: 2, delete: 1, produce: 1, param: 2, param: 3, from: 1, exec: 2, exec: 1]
+locals_without_parens = [
+  produce: 2,
+  update: 2,
+  delete: 1,
+  produce: 1,
+  param: 2,
+  param: 3,
+  from: 1,
+  exec: 2,
+  exec: 1
+]
 
 [
   inputs: ["{mix,.formatter}.exs", "{config,lib,test}/**/*.{ex,exs}"],
