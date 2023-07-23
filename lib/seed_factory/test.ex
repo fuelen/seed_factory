@@ -8,7 +8,15 @@ defmodule SeedFactory.Test do
   ```
   use SeedFactory.Test, schema: MySeedFactorySchema
   ```
-  It sets up `SeedFactory` by invoking `SeedFactory.init/2` and imports `SeedFactory.rebind/3`, `SeedFactory.produce/2`, `SeedFactory.exec/3` and `SeedFactory.exec/2` functions.
+  It sets up `SeedFactory` by invoking `SeedFactory.init/2` in `ExUnit.Callbacks.setup_all/2` block and imports the following functions:
+    * `produce/1`
+    * `SeedFactory.rebind/3`
+    * `SeedFactory.produce/2`
+    * `SeedFactory.exec/2`
+    * `SeedFactory.exec/3`
+    * `SeedFactory.pre_exec/2`
+    * `SeedFactory.pre_exec/3`
+    * `SeedFactory.pre_produce/2`
   """
   defmacro __using__(opts) do
     quote bind_quoted: [opts: opts] do
@@ -26,41 +34,50 @@ defmodule SeedFactory.Test do
   end
 
   @doc """
-  A macro that implicitly passes `context` and allows using `SeedFactory.produce/2` outside the `test` block.
+  A macro that implicitly passes `context` and allows usage of `SeedFactory.produce/2` outside the `test` block.
 
   Basically, it creates a `setup` block and calls `SeedFactory.produce/2` inside.
 
   ## Examples
 
-  ```
+  ```elixir
   produce :company
 
-  test "my test", company: company do
+  test "my test", %{company: company} do
     assert my_function(company)
   end
   ```
 
-  ```
+  ```elixir
   produce [:user, :project]
 
-  test "my test", user: user, project: project do
+  test "my test", %{user: user, project: project} do
     assert my_function(project, user)
   end
   ```
 
-  ```
+  ```elixir
   produce org: :org1
   produce org: :org2
 
-  test "my test", org1: org1, org2: org2 do
+  test "my test", %{org1: org1, org2: org2} do
     assert my_function(org2, org1)
   end
   ```
   """
-  defmacro produce(entities) do
-    quote bind_quoted: [entities: entities] do
+
+  @spec produce(
+          SeedFactory.entity_name()
+          | [
+              SeedFactory.entity_name()
+              | SeedFactory.rebinding_rule()
+              | {SeedFactory.entity_name(), [trait_name :: atom() | {:as, rebind_as :: atom()}]}
+            ]
+        ) :: Macro.t()
+  defmacro produce(data) do
+    quote bind_quoted: [data: data] do
       setup context do
-        produce(context, unquote(entities))
+        produce(context, unquote(data))
       end
     end
   end

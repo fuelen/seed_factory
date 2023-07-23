@@ -11,7 +11,9 @@ defmodule SeedFactory.Schema do
 
   ## Command Definition
 
-  To define a command, use the `command` macro followed by the command name. Inside the command block, you can define various parameters, a resolution, and produce, update, and delete directives.
+  Command is the first thing that should be defined in the schema.
+  To define a command, use the `command` macro followed by the command name. Inside the command block,
+  you can define various parameters, a resolution, and produce, update, and delete directives.
 
   ```elixir
   command :create_user do
@@ -21,41 +23,38 @@ defmodule SeedFactory.Schema do
 
   ## Parameters
 
-  Parameters define the inputs required for the command's resolver function. They can be defined using the `param` macro.
-
-  ```elixir
-  param :param_name, atom_or_function
-  ```
-
-  The `atom_or_function` can be either a static atom or a zero-arity function that generates dynamic data.
-
-  When using an atom as the value, it refers to an entity within the context.
-
-  Parameters can have an arbitrary level of nesting.
+  Parameters define the inputs required for the command's resolver function and how default values should be generated.
+  Parameter can be defined using the `param` macro and can have an arbitrary level of nesting.
 
   ### Options
 
-  * `:with_traits` - a list of atoms with trait names.
+  * `:value` - a static default value. Applied by default as `value: nil`.
+  * `:generate` - an anonymous function that generates data.
+  * `:entity` - refers to an entity within the context.
+  * `:with_traits` - a list of atoms with trait names. Can be applied only if `:entity` option is present.
+  * `:map` - an anonymous function that allows mapping an entity to another value. Can be applied only if `:entity` option is present.
+
+  One of these options should always be specified: `:value`, `:generate`, `:entity`.
 
   ```elixir
   param :address do
-    param :city, fn -> "Lemberg" end
-    param :street, &generate_street/0
+    param :city, value: "Lemberg"
+    param :street, generate: &random_street/0
   end
 
-  param :user, :user
-  ```
-
-  ```elixir
-  param :paid_by, :user, with_traits: [:active]
+  param :paid_by, entity: :user, with_traits: [:active]
+  param :office_id, entity: :office, map: & &1.id
   ```
 
   ## Resolution
 
   The resolution defines the logic to be executed when the command is invoked. It is implemented as a resolver function inside the `resolve` macro.
-  The resolver function is an anonymous function that takes `args` as its parameter, representing the arguments provided when invoking the command.
+  The resolver function is an anonymous function that takes `args` as its parameter.
 
-  It should return `{:ok, map}`, where map keys are atoms and values represent entities. The atom keys will be used by the `:from` option in `produce` and `update` directives.
+  It should return `{:ok, map}`, where map keys are atoms and values represent entities.
+  The atom keys will be used by the `:from` option in `produce` and `update` directives.
+
+  `{:error, reason}` will raise an exception.
 
   ```elixir
   resolve(fn args ->
@@ -63,7 +62,6 @@ defmodule SeedFactory.Schema do
     {:ok, %{user: user}}
   end)
   ```
-
 
   ## Producing Entities
 
@@ -115,14 +113,14 @@ defmodule SeedFactory.Schema do
 
   ```elixir
   trait :pending, :user do
-    exec(:create_user)
+    exec :create_user
   end
   ```
 
   ```elixir
   trait :active, :user do
     from :pending
-    exec(:activate_user)
+    exec :activate_user
   end
   ```
 
@@ -136,11 +134,11 @@ defmodule SeedFactory.Schema do
   * `:args_pattern` - a map with args. If specified, then entity will be marked with the trait only when command args match the pattern.
 
   ```elixir
-  exec(:create_user, args_pattern: %{role: :admin})
+  exec :create_user, args_pattern: %{role: :admin}
   ```
 
   ```elixir
-  exec(:create_user, args_pattern: %{role: :normal})
+  exec :create_user, args_pattern: %{role: :normal}
   ```
 
   """

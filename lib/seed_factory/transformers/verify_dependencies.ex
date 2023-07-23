@@ -60,17 +60,17 @@ defmodule SeedFactory.Transformers.VerifyDependencies do
 
   def add_edges(params, digraph, vertice_to, vertices, command_name_by_entity) do
     Enum.each(params, fn {_key, parameter} ->
-      case parameter.source do
-        nil ->
+      case parameter.type do
+        :container ->
           add_edges(parameter.params, digraph, vertice_to, vertices, command_name_by_entity)
 
-        generator when is_function(generator, 0) ->
-          :noop
-
-        entity_name when is_atom(entity_name) ->
-          required_command_name = Map.fetch!(command_name_by_entity, entity_name)
+        :entity ->
+          required_command_name = Map.fetch!(command_name_by_entity, parameter.entity)
           vertice_from = Map.fetch!(vertices, required_command_name)
-          :digraph.add_edge(digraph, vertice_to, vertice_from, entity_name)
+          :digraph.add_edge(digraph, vertice_to, vertice_from, parameter.entity)
+
+        _ ->
+          :noop
       end
     end)
   end

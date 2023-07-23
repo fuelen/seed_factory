@@ -40,11 +40,11 @@ defmodule SchemaExample do
   end
 
   command :create_org do
-    param :name, &random_string/0
+    param :name, generate: &random_string/0
 
     param :address do
-      param :city, &random_string/0
-      param :country, &random_string/0
+      param :city, generate: &random_string/0
+      param :country, generate: &random_string/0
     end
 
     resolve(fn args ->
@@ -56,8 +56,8 @@ defmodule SchemaExample do
   end
 
   command :create_office do
-    param :name, &random_string/0
-    param :org, :org
+    param :name, generate: &random_string/0
+    param :org, entity: :org
 
     resolve(fn args ->
       office = %Office{name: args.name, org_id: args.org.id, id: gen_id()}
@@ -68,8 +68,8 @@ defmodule SchemaExample do
   end
 
   command :create_draft_project do
-    param :name, &random_string/0
-    param :office, :office
+    param :name, generate: &random_string/0
+    param :office, entity: :office
 
     resolve(fn args ->
       project = %Project{name: args.name, draft?: true, office_id: args.office.id, id: gen_id()}
@@ -80,8 +80,8 @@ defmodule SchemaExample do
   end
 
   command :publish_project do
-    param :project, :draft_project
-    param :published_by, :user, with_traits: [:active]
+    param :project, entity: :draft_project
+    param :published_by, entity: :user, with_traits: [:active]
 
     resolve(fn args ->
       {:ok, %{project: %{args.project | draft?: false, published_by_id: args.published_by.id}}}
@@ -92,10 +92,10 @@ defmodule SchemaExample do
   end
 
   command :create_user do
-    param :name, &random_string/0
-    param :role, fn -> :normal end
-    param :contacts_confirmed?, fn -> false end
-    param :office_id, :office, map: &get_id/1
+    param :name, generate: &random_string/0
+    param :role, value: :normal
+    param :contacts_confirmed?, value: false
+    param :office_id, entity: :office, map: &get_id/1
 
     resolve(fn args ->
       user = %User{
@@ -121,10 +121,10 @@ defmodule SchemaExample do
   end
 
   command :activate_user do
-    param :user, :user, with_traits: [:pending]
+    param :user, entity: :user, with_traits: [:pending]
 
     param :finances do
-      param :plan, fn -> :trial end
+      param :plan, value: :trial
     end
 
     resolve(fn args ->
@@ -135,7 +135,7 @@ defmodule SchemaExample do
   end
 
   command :suspend_user do
-    param :user, :user, with_traits: [:active]
+    param :user, entity: :user, with_traits: [:active]
 
     resolve(fn args -> {:ok, %{user: %{args.user | status: :suspended}}} end)
 
@@ -143,7 +143,7 @@ defmodule SchemaExample do
   end
 
   command :delete_user do
-    param :user, :user, with_traits: [:active]
+    param :user, entity: :user, with_traits: [:active]
 
     resolve(fn _args -> {:ok, %{}} end)
 
@@ -151,10 +151,10 @@ defmodule SchemaExample do
   end
 
   command :create_virtual_file do
-    param :content, fn -> "Lorem ipsum" end
-    param :privacy, fn -> :private end
-    param :project, :project
-    param :author, :user, with_traits: [:active, :admin]
+    param :content, generate: &random_string/0
+    param :privacy, value: :private
+    param :project, entity: :project
+    param :author, entity: :user, with_traits: [:active, :admin]
 
     resolve(fn args ->
       file = %VirtualFile{

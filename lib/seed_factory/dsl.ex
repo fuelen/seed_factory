@@ -21,7 +21,7 @@ defmodule SeedFactory.DSL do
   @param %Spark.Dsl.Entity{
     name: :param,
     recursive_as: :params,
-    args: [:name, :source],
+    args: [:name],
     entities: [params: []],
     transform: {SeedFactory.Parameter, :transform, []},
     target: SeedFactory.Parameter,

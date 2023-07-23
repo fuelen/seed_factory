@@ -6,7 +6,7 @@ defmodule SeedFactory do
   whenever it is possible and avoid direct inserts to the database (opposed to `ex_machina`).
   This approach allows to minimize testing of invalid states as you're not forced to keep complex database structure in your head in order to prepare test data.
 
-  **Context**, **Entities** and **commands** are the core concepts of the library.
+  **Context**, **entities** and **commands** are the core concepts of the library.
 
   Context is a map which can be populated by entities using commands.
   The schema with instructions on how commands modify context is described using DSL with the help of `SeedFactory.Schema` module.
@@ -19,9 +19,14 @@ defmodule SeedFactory do
   An entity can be produced only by one command.
   When a command is executed, produced entities are assigned to the context using the name of the entity as a key.
   A command has params with instructions on how to generate arguments for a resolver if they are not passed explicitly with `exec/3` function.
-  The instruction can be either a zero-arity function or an atom. A zero-arity function is used for generating data.
-  An atom is used to specify an entity which should be taken from the context. If a required entity cannot
+  The instruction can be specified using one of these options:
+  * `:value` - any term. This option is used by default with the value of `nil`.
+  * `:generate` - a zero-arity function for generating data.
+  * `:entity` - an atom which points to an entity which should be taken from the context. If a required entity cannot
   be found in a context, then `SeedFactory` automatically executes a corresponding command which produces the entity.
+
+  Entities can have traits.
+  Think about them as labels which are assigned to produced/updated entities when specific commands with specific arguments are executed.
 
   Let's take a look at an example of a simple schema.
   ```elixir
@@ -29,7 +34,7 @@ defmodule SeedFactory do
     use SeedFactory.Schema
 
     command :create_company do
-      param :name, &Faker.Company.name/0
+      param :name, generate: &Faker.Company.name/0
 
       resolve(fn args ->
         with {:ok, company} <- MyApp.Companies.create_company(args) do
@@ -41,9 +46,9 @@ defmodule SeedFactory do
     end
 
     command :create_user do
-      param :name, &Faker.Person.name/0
-      param :role, fn -> :normal end
-      param :company, :company
+      param :name, generate: &Faker.Person.name/0
+      param :role, value: :normal
+      param :company, entity: :company
 
       resolve(fn args -> MyApp.Users.create_user(args.company, args.name, args.role) end)
 
@@ -52,7 +57,7 @@ defmodule SeedFactory do
     end
 
     command :activate_user do
-      param :user, :user, with_traits: [:pending]
+      param :user, entity: :user, with_traits: [:pending]
 
       resolve(fn args ->
         user = MyApp.Users.activate_user!(args.user)
@@ -81,39 +86,75 @@ defmodule SeedFactory do
     end
   end
   ```
-  The schema above describes how to produce 3 entities (`:company`, `:user` and `:profile`) using 2 commands (`:create_user` and `:create_company`)
-  and which traits will `:user` entity have after commands execution.
+  The schema above describes how to produce 3 entities (`:company`, `:user` and `:profile`) using 2 commands (`:create_user` and `:create_company`).
   There is a third command which only updates the `:user` entity.
+  Also, it describes traits of `:user` entity.
 
-  In order to use the schema, we need to put metadata about it to the context using `init/2` function:
+  In order to use the schema, put metadata about it to the context using `init/2` function:
   ```elixir
   context = %{}
   context = init(context, MyApp.SeedFactorySchema)
   ```
   If you use `SeedFactory` in tests, use `SeedFactory.Test` helper module instead.
 
-  Now, we can use `produce/2` to produce entities using commands defined in the schema:
-
+  Now, `exec/2` function can be used to execute a command:
   ```elixir
-  context = produce(context, :user)
+  context = exec(context, :create_company)
+  ```
+  The code above will generate arguments for `:create_company` command, execute a resolver with generated arguments and put company to context using `:company` key.
+  `exec/3` can be used if you want to specify parameters explicitly:
+  ```elixir
+  context = exec(context, :create_company, name: "GitHub")
   ```
 
-  After executing the code above, `context` will have 3 new keys: `:company`, `:user` and `:profile`.
-  `SeedFactory` automatically executes a chain of commands needed to produce `:user` entity. In this case `:company`
-  was produced by the `:create_company` command before resolving the `:create_user` command.
-
-  `exec/3` can be used if you want to specify parameters explicitly:
-
+  Because exec function returns `t:context/0`, it is convenient to chain `exec` calls with pipe operator:
   ```elixir
   context =
     context
-    |> exec(:create_company, name: "GitHub")
+    |> exec(:create_company)
     |> exec(:create_user, name: "John Doe")
   ```
+  In order to get a value for the `:command` parameter of the `:create_user` command, the corresponding entity was taken from the context.
+  However, it is not necessary to do so, as `SeedFactory` can automatically execute commands which produce dependent entities.
+  The code above has the same effect as a single call to `:create_user` command:
+  ```elixir
+  context = exect(context, :create_user, name: "John Doe")
+  ```
+
+  If you're not interested in explicit providing parameters to commands, then you can use `produce/2` function to produce
+  requested entities with automatic execution of all dependend commands:
+  ```elixir
+  context = produce(context, :user)
+  ```
+  Even though `:user` is the only entity specified explicitly, `context` will have 3 new keys: `:company`, `:user` and `:profile`.
+
+  > #### Tip {: .tip}
+  > It is recommended to specify all entities explicitly in which you're insterested:
+  > ```elixir
+  > # good
+  > %{user: user} = produce(contex, :user)
+  >
+  > # good
+  > %{user: user, profile: profile} = produce(contex, [:user, :profile])
+  >
+  > # good
+  > %{user: user, profile: profile, company: company} = produce(contex, [:user, :profile, :company])
+  >
+  > # bad
+  > %{user: user, profile: profile, company: company} = produce(contex, :user)
+  > ```
 
   `exec/3` fails if produced entities are already present in the context.
-  It is possible to rebind entities in order to assign them to the context with the different name:
-
+  It is possible to rebind entities in order to assign them to the context with different names:
+  ```elixir
+  context =
+    context
+    |> rebind([user: :user1, profile: :profile1], &exec(&1, :create_user))
+    |> rebind([user: :user2, profile: :profile1], &exec(&1, :create_user))
+  ```
+  The snippet above puts the following keys to the context: `:company`, `:user1`, `:profile1`, `:user2`, `:profile2`.
+  The `:company` is shared in this case, so two users have different profiles and belong to the same company.
+  A shorter counterpart using `produce/2` is the following:
   ```elixir
   context =
     context
@@ -121,37 +162,36 @@ defmodule SeedFactory do
     |> produce(user: :user2, profile: :profile2)
   ```
 
-  The snippet above puts the following keys to the context: `:company`, `:user1`, `:profile1`, `:user2`, `:profile2`.
-  The `:company` is shared in this case, so two users have different profiles and belong to the same company.
-
-  Let's create 2 companies with 1 user in each and pass names to companies explicitly:
+  As was pointed out previously, traits are assigned to entities when commands produce/update them.
+  `SeedFactory` does this automatically by tracking commands and arguments.
+  You can inspect `__seed_factory_meta__` key in the context to review currently assigned traits:
 
   ```elixir
-  context =
-    context
-    |> rebind([company: :company1, user: :user1, profile: :profile1], fn context ->
-      context
-      |> exec(:create_company, name: "GitHub")
-      |> produce(:user)
-    end)
-    |> rebind([company: :company2, user: :user2, profile: :profile2], fn context ->
-      context
-      |> exec(:create_company, name: "Microsoft")
-      |> produce(:user)
-    end)
+  context |> exec(:create_user) |> IO.inspect()
+  # %{
+  # __seed_factory_meta__: #SeedFactory.Meta<
+  #   current_traits: %{user: [:normal, :pending]},
+  #   ...
+  # >,
+  # ...
+  # }
+
+  context |> exec(:create_user, role: :admin) |> exec(:activate_user) |> IO.inspect()
+  # %{
+  # __seed_factory_meta__: #SeedFactory.Meta<
+  #   current_traits: %{user: [:admin, :active]},
+  #   ...
+  # >,
+  # ...
+  # }
   ```
 
-  Request user with traits:
-
+  To achive the same result, traits can be passed to `produce/2`:
   ```elixir
   produce(context, user: [:admin, :active])
   ```
 
-  The command above will execute `:create_user` command with `:admin` value in `:role` parameter.
-  After that, the command `:activate_user` will be executed in order to make the user active.
-
   If you want to specify traits and assign an entity to the context with the different name, then use `:as` option:
-
   ```elixir
   %{admin: admin} = produce(context, user: [:admin, as: :admin])
   ```
@@ -161,7 +201,7 @@ defmodule SeedFactory do
   @type rebinding_rule :: {entity_name(), rebind_as :: atom()}
 
   @doc """
-  Puts metadata about `schema` to `context`, so `context` becomes usable by `rebind/3`, `produce/2` and `exec/3`.
+  Puts metadata about `schema` to `context`, so `context` becomes usable by other functions from this module.
 
   ## Example
 
@@ -275,6 +315,8 @@ defmodule SeedFactory do
   @doc """
   Produces dependencies needed for specified entities.
 
+  See `pre_exec/3` for problems it solves.
+
   ## Example
 
       # pre_produce produces a company and puts it into context,
@@ -309,7 +351,7 @@ defmodule SeedFactory do
   end
 
   def pre_produce(context, entity) when is_atom(entity) do
-    produce(context, [entity])
+    pre_produce(context, [entity])
   end
 
   defp split_entities_and_rebinding(entities_and_rebinding) do
@@ -547,20 +589,20 @@ defmodule SeedFactory do
 
   defp parameter_requirements(params, acc, initial_input) do
     Enum.reduce(params, acc, fn {key, parameter}, acc ->
-      case parameter.source do
-        generator when is_function(generator, 0) ->
-          acc
-
-        nil ->
+      case parameter.type do
+        :container ->
           parameter_requirements(parameter.params, acc, initial_input)
 
-        entity_name when is_atom(entity_name) ->
+        :entity ->
           if Map.has_key?(initial_input, key) do
             acc
           else
             trait_names = parameter.with_traits || []
-            Map.update(acc, entity_name, trait_names, &(trait_names ++ &1))
+            Map.update(acc, parameter.entity, trait_names, &(trait_names ++ &1))
           end
+
+        _ ->
+          acc
       end
     end)
   end
@@ -629,7 +671,7 @@ defmodule SeedFactory do
   end
 
   @doc """
-  Executes a command and puts its result to `context`.
+  Executes a command and puts its result to the `context`.
 
   ## Example
 
@@ -885,24 +927,27 @@ defmodule SeedFactory do
     Map.new(params, fn
       {key, parameter} ->
         value =
-          case parameter.source do
-            generator when is_function(generator, 0) ->
-              Map.get_lazy(initial_input, key, generator)
+          case parameter.type do
+            :generator ->
+              Map.get_lazy(initial_input, key, parameter.generate)
 
-            nil ->
+            :container ->
               prepare_args(parameter.params, Map.get(initial_input, key, %{}), context)
 
-            entity_name when is_atom(entity_name) ->
+            :entity ->
               case Map.fetch(initial_input, key) do
                 {:ok, value} ->
                   value
 
                 :error ->
-                  binding_name = binding_name(context, entity_name)
+                  binding_name = binding_name(context, parameter.entity)
 
                   entity = Map.fetch!(context, binding_name)
                   maybe_map(entity, parameter.map)
               end
+
+            :value ->
+              Map.get(initial_input, key, parameter.value)
           end
 
         {key, value}
