@@ -492,6 +492,13 @@ defmodule SeedFactoryTest do
       end)
 
     assert diff == %{added: [:org], deleted: [], updated: []}
+
+    {_context, diff} =
+      with_diff(context, fn ->
+        pre_produce(context, :office)
+      end)
+
+    assert diff == %{added: [:org], deleted: [], updated: []}
   end
 
   defp assert_trait(context, binding_name, expected_traits) when is_list(expected_traits) do

@@ -359,9 +359,6 @@ defmodule SeedFactory do
       {entity_name, rebind_as} = rebinding_rule, acc when is_atom(rebind_as) ->
         {{entity_name, []}, [rebinding_rule | acc]}
 
-      {entity_name, []}, acc ->
-        {{entity_name, []}, acc}
-
       {entity_name, list}, acc when is_list(list) ->
         {trait_names, opts} = Enum.split_while(list, &is_atom/1)
 
