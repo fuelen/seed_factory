@@ -141,6 +141,13 @@ defmodule SeedFactory.Schema do
   exec :create_user, args_pattern: %{role: :normal}
   ```
 
+  ## Include schemas
+
+  It is possible to include multiple schemas into a new schema in order to reuse everything that is declared in specified modules.
+
+  ```elixir
+  include_schema MyApp.SeedFactorySchema
+  ```
   """
   use Spark.Dsl, default_extensions: [extensions: SeedFactory.DSL]
 end

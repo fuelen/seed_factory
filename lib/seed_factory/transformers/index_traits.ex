@@ -5,6 +5,7 @@ defmodule SeedFactory.Transformers.IndexTraits do
 
   def after?(module) do
     module in [
+      SeedFactory.Transformers.IncludeSchemas,
       SeedFactory.Transformers.IndexCommands,
       SeedFactory.Transformers.IndexEntities
     ]
@@ -13,7 +14,7 @@ defmodule SeedFactory.Transformers.IndexTraits do
   def transform(dsl_state) do
     traits =
       dsl_state
-      |> Transformer.get_entities([:root])
+      |> Transformer.get_persisted(:root)
       |> Enum.filter(&is_struct(&1, SeedFactory.Trait))
       |> Enum.group_by(& &1.entity)
       |> Map.new(fn {entity, traits} ->

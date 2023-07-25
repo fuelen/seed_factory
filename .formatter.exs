@@ -8,7 +8,8 @@ locals_without_parens = [
   param: 3,
   from: 1,
   exec: 2,
-  exec: 1
+  exec: 1,
+  include_schema: 1
 ]
 
 [

@@ -1,4 +1,10 @@
 defmodule SeedFactory.DSL do
+  @include_schema %Spark.Dsl.Entity{
+    name: :include_schema,
+    args: [:schema_module],
+    target: SeedFactory.IncludeSchema,
+    schema: SeedFactory.IncludeSchema.schema()
+  }
   @producing_instruction %Spark.Dsl.Entity{
     name: :produce,
     args: [:entity],
@@ -58,7 +64,7 @@ defmodule SeedFactory.DSL do
   }
   @root %Spark.Dsl.Section{
     name: :root,
-    entities: [@command, @trait],
+    entities: [@command, @trait, @include_schema],
     top_level?: true
   }
   @sections [@root]
@@ -67,6 +73,7 @@ defmodule SeedFactory.DSL do
   use Spark.Dsl.Extension,
     sections: @sections,
     transformers: [
+      SeedFactory.Transformers.IncludeSchemas,
       SeedFactory.Transformers.IndexCommands,
       SeedFactory.Transformers.IndexEntities,
       SeedFactory.Transformers.IndexTraits,

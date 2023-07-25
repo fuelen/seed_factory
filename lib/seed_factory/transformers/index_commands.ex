@@ -3,10 +3,14 @@ defmodule SeedFactory.Transformers.IndexCommands do
   use Spark.Dsl.Transformer
   alias Spark.Dsl.Transformer
 
+  def after?(module) do
+    module == SeedFactory.Transformers.IncludeSchemas
+  end
+
   def transform(dsl_state) do
     command_by_name =
       dsl_state
-      |> Transformer.get_entities([:root])
+      |> Transformer.get_persisted(:root)
       |> Enum.filter(&is_struct(&1, SeedFactory.Command))
       |> tap(&ensure_unique_names/1)
       |> Map.new(&{&1.name, &1})

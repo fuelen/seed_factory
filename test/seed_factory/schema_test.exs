@@ -1,16 +1,23 @@
 defmodule SeedFactory.SchemaTest do
   use ExUnit.Case, async: true
 
-  test "persisted data" do
-    assert Spark.Dsl.Extension.get_persisted(SchemaExample, :entities) == %{
-             office: :create_office,
-             org: :create_org,
-             project: :publish_project,
-             draft_project: :create_draft_project,
-             user: :create_user,
-             profile: :create_user,
-             virtual_file: :create_virtual_file
-           }
+  @schema_example_entities %{
+    office: :create_office,
+    org: :create_org,
+    project: :publish_project,
+    draft_project: :create_draft_project,
+    user: :create_user,
+    profile: :create_user,
+    virtual_file: :create_virtual_file
+  }
+
+  test 'SchemaExampleExtended - persisted data' do
+    assert Spark.Dsl.Extension.get_persisted(SchemaExampleExtended, :entities) ==
+             Map.merge(@schema_example_entities, %{conn: :build_conn})
+  end
+
+  test "persisted data - SchemaExample" do
+    assert Spark.Dsl.Extension.get_persisted(SchemaExample, :entities) == @schema_example_entities
 
     assert Spark.Dsl.Extension.get_persisted(SchemaExample, :commands) == %{
              activate_user: %SeedFactory.Command{
