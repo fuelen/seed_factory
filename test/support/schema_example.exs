@@ -28,7 +28,7 @@ defmodule SchemaExample do
       raise "BOOM"
     end)
 
-    update :user, from: :user
+    update :user
   end
 
   command :resolve_with_error do
@@ -36,7 +36,7 @@ defmodule SchemaExample do
       {:error, %{message: "OOPS", other_key: :data}}
     end)
 
-    update :user, from: :user
+    update :user
   end
 
   command :create_org do
@@ -52,7 +52,7 @@ defmodule SchemaExample do
       {:ok, %{org: org}}
     end)
 
-    produce :org, from: :org
+    produce :org
   end
 
   command :create_office do
@@ -64,7 +64,7 @@ defmodule SchemaExample do
       {:ok, %{office: office}}
     end)
 
-    produce :office, from: :office
+    produce :office
   end
 
   command :create_draft_project do
@@ -87,7 +87,7 @@ defmodule SchemaExample do
       {:ok, %{project: %{args.project | draft?: false, published_by_id: args.published_by.id}}}
     end)
 
-    produce :project, from: :project
+    produce :project
     delete :draft_project
   end
 
@@ -116,8 +116,8 @@ defmodule SchemaExample do
       {:ok, %{user: user, profile: profile}}
     end)
 
-    produce :user, from: :user
-    produce :profile, from: :profile
+    produce :user
+    produce :profile
   end
 
   command :activate_user do
@@ -131,7 +131,7 @@ defmodule SchemaExample do
       {:ok, %{user: %{args.user | status: :active, plan: args.finances.plan}}}
     end)
 
-    update :user, from: :user
+    update :user
   end
 
   command :suspend_user do
@@ -139,7 +139,7 @@ defmodule SchemaExample do
 
     resolve(fn args -> {:ok, %{user: %{args.user | status: :suspended}}} end)
 
-    update :user, from: :user
+    update :user
   end
 
   command :delete_user do
@@ -171,7 +171,7 @@ defmodule SchemaExample do
     end)
 
     produce :virtual_file, from: :file
-    update :project, from: :project
+    update :project
   end
 
   trait :pending, :user do

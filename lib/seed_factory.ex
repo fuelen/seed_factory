@@ -42,7 +42,7 @@ defmodule SeedFactory do
         end
       end)
 
-      produce :company, from: :company
+      produce :company
     end
 
     command :create_user do
@@ -52,8 +52,8 @@ defmodule SeedFactory do
 
       resolve(fn args -> MyApp.Users.create_user(args.company, args.name, args.role) end)
 
-      produce :user, from: :user
-      produce :profile, from: :profile
+      produce :user
+      produce :profile
     end
 
     command :activate_user do
@@ -65,7 +65,7 @@ defmodule SeedFactory do
         {:ok, %{user: user}}
       end)
 
-      update :user, from: :user
+      update :user
     end
 
     trait :pending, :user do

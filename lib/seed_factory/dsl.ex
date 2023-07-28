@@ -8,12 +8,14 @@ defmodule SeedFactory.DSL do
   @producing_instruction %Spark.Dsl.Entity{
     name: :produce,
     args: [:entity],
+    transform: {SeedFactory.ProducingInstruction, :transform, []},
     target: SeedFactory.ProducingInstruction,
     schema: SeedFactory.ProducingInstruction.schema()
   }
   @updating_instruction %Spark.Dsl.Entity{
     name: :update,
     args: [:entity],
+    transform: {SeedFactory.UpdatingInstruction, :transform, []},
     target: SeedFactory.UpdatingInstruction,
     schema: SeedFactory.UpdatingInstruction.schema()
   }

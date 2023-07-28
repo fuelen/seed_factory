@@ -69,10 +69,20 @@ defmodule SeedFactory.Schema do
 
   ### Options
 
-  * `:from` - an atom that specifies the key of the map returned by the resolver.
+  * `:from` - an atom that specifies the key of the map returned by the resolver. Defaults to specified entity name (first argument)
 
   ```elixir
   produce :entity_name, from: :source_key
+  ```
+
+  ```elixir
+  resolve(fn args ->
+    {user, profile} = MyApp.register_user!(args)
+    {:ok, %{user: user, profile: profile}}
+  end)
+
+  produce :user
+  produce :user_profile, from: :profile
   ```
 
   ## Updating Entities
@@ -81,10 +91,20 @@ defmodule SeedFactory.Schema do
 
   ### Options
 
-  * `:from` - an atom that specifies the key of the map returned by the resolver.
+  * `:from` - an atom that specifies the key of the map returned by the resolver. Defaults to specified entity name (first argument)
 
   ```elixir
   update :entity_name, from: :source_key
+  ```
+
+  ```elixir
+  resolve(fn args ->
+    {user, profile} = MyApp.update_user!(args)
+    {:ok, %{user: user, profile: profile}}
+  end)
+
+  update :user
+  update :user_profile, from: :profile
   ```
 
   ## Deleting Entities
