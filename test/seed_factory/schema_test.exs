@@ -308,35 +308,57 @@ defmodule SeedFactory.SchemaTest do
                }
              },
              publish_project: %SeedFactory.Command{
-               name: :publish_project,
-               producing_instructions: [
-                 %SeedFactory.ProducingInstruction{entity: :project, from: :project}
-               ],
-               updating_instructions: [],
                deleting_instructions: [%SeedFactory.DeletingInstruction{entity: :draft_project}],
-               resolve: &SchemaExample.resolve_0_generated_499072EB572D4497C8697813784328E1/1,
+               name: :publish_project,
                params: %{
                  project: %SeedFactory.Parameter{
+                   entity: :draft_project,
+                   generate: nil,
+                   map: nil,
                    name: :project,
+                   params: %{},
+                   type: :entity,
+                   value: nil,
+                   with_traits: nil
+                 },
+                 published_by: %SeedFactory.Parameter{
+                   entity: :user,
+                   generate: nil,
+                   map: nil,
+                   name: :published_by,
+                   params: %{},
+                   type: :entity,
+                   value: nil,
+                   with_traits: [:active]
+                 },
+                 expiry_date: %SeedFactory.Parameter{
+                   name: :expiry_date,
                    params: %{},
                    map: nil,
                    with_traits: nil,
                    value: nil,
-                   generate: nil,
-                   entity: :draft_project,
-                   type: :entity
+                   generate:
+                     &SchemaExample.generate_0_generated_97BCB0EA065CEF28B161F312007BDF25/0,
+                   entity: nil,
+                   type: :generator
                  },
-                 published_by: %SeedFactory.Parameter{
-                   name: :published_by,
+                 start_date: %SeedFactory.Parameter{
+                   name: :start_date,
                    params: %{},
                    map: nil,
-                   with_traits: [:active],
+                   with_traits: nil,
                    value: nil,
-                   generate: nil,
-                   entity: :user,
-                   type: :entity
+                   generate:
+                     &SchemaExample.generate_0_generated_C2AD3F3EB84B6CE103A970747E2E709E/0,
+                   entity: nil,
+                   type: :generator
                  }
-               }
+               },
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{entity: :project, from: :project}
+               ],
+               resolve: &SchemaExample.resolve_0_generated_71A4BAD215626E41B762AD6D43D42F61/1,
+               updating_instructions: []
              },
              raise_exception: %SeedFactory.Command{
                name: :raise_exception,
@@ -709,6 +731,90 @@ defmodule SeedFactory.SchemaTest do
 
             trait :pending, :unknown do
               exec(:create_org)
+            end
+          end
+        end
+      )
+    end
+
+    test "args_match is present without generate_arg" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.SchemaTest.MySchema13]
+         root -> exec:
+          Option generate_args is required when args_match is specified
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema13 do
+            use SeedFactory.Schema
+
+            trait :pending, :unknown do
+              exec :create_org, args_match: fn _ -> true end
+            end
+          end
+        end
+      )
+    end
+
+    test "generate_args is present without args_match" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.SchemaTest.MySchema14]
+         root -> exec:
+          Option args_match is required when generate_args` is specified
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema14 do
+            use SeedFactory.Schema
+
+            trait :pending, :unknown do
+              exec :create_org, generate_args: fn -> true end
+            end
+          end
+        end
+      )
+    end
+
+    test "generate_args is present wit args_pattern" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.SchemaTest.MySchema15]
+         root -> exec:
+          Option args_pattern cannot be used with generate_args and args_match options
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema15 do
+            use SeedFactory.Schema
+
+            trait :pending, :unknown do
+              exec :create_org, generate_args: fn -> true end, args_pattern: %{}
+            end
+          end
+        end
+      )
+    end
+
+    test "args_match is present with args_pattern" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.SchemaTest.MySchema16]
+         root -> exec:
+          Option args_pattern cannot be used with generate_args and args_match options
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema16 do
+            use SeedFactory.Schema
+
+            trait :pending, :unknown do
+              exec :create_org, args_match: fn _ -> true end, args_pattern: %{}
             end
           end
         end

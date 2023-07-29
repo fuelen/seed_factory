@@ -6,8 +6,18 @@ defmodule SchemaExample do
   defmodule User, do: defstruct([:id, :name, :office_id, :status, :role, :plan])
   defmodule Profile, do: defstruct([:id, :user_id, :contacts_confirmed?])
 
-  defmodule Project,
-    do: defstruct([:id, :name, :office_id, :draft?, :published_by_id, :virtual_files])
+  defmodule Project do
+    defstruct [
+      :id,
+      :name,
+      :office_id,
+      :draft?,
+      :published_by_id,
+      :virtual_files,
+      :expiry_date,
+      :start_date
+    ]
+  end
 
   defmodule VirtualFile, do: defstruct([:id, :content, :project_id, :author_id, :privacy])
 
@@ -82,9 +92,20 @@ defmodule SchemaExample do
   command :publish_project do
     param :project, entity: :draft_project
     param :published_by, entity: :user, with_traits: [:active]
+    param :start_date, generate: fn -> Date.utc_today() end
+    param :expiry_date, generate: fn -> Date.utc_today() |> Date.add(21) end
 
     resolve(fn args ->
-      {:ok, %{project: %{args.project | draft?: false, published_by_id: args.published_by.id}}}
+      {:ok,
+       %{
+         project: %{
+           args.project
+           | draft?: false,
+             published_by_id: args.published_by.id,
+             start_date: args.start_date,
+             expiry_date: args.expiry_date
+         }
+       }}
     end)
 
     produce :project
@@ -228,5 +249,27 @@ defmodule SchemaExample do
 
   trait :with_virtual_file, :project do
     exec :create_virtual_file
+  end
+
+  trait :not_expired, :project do
+    exec :publish_project do
+      args_match(fn args -> Date.compare(Date.utc_today(), args.expiry_date) in [:lt, :eq] end)
+
+      generate_args(fn ->
+        today = Date.utc_today()
+        %{start_date: today, expiry_date: Date.add(today, 21)}
+      end)
+    end
+  end
+
+  trait :expired, :project do
+    exec :publish_project do
+      args_match(fn args -> Date.compare(Date.utc_today(), args.expiry_date) == :gt end)
+
+      generate_args(fn ->
+        today = Date.utc_today()
+        %{start_date: Date.add(today, -22), expiry_date: Date.add(today, -1)}
+      end)
+    end
   end
 end

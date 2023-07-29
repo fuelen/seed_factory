@@ -409,6 +409,30 @@ defmodule SeedFactoryTest do
                    end
     end
 
+    test "traits defined with generate_args and args_match options", context do
+      today = Date.utc_today()
+
+      context
+      |> exec(:publish_project, expiry_date: Date.add(today, 10), start_date: Date.add(today, 2))
+      |> assert_trait(:project, [:not_expired])
+
+      context
+      |> exec(:publish_project, expiry_date: Date.add(today, -1), start_date: Date.add(today, -22))
+      |> assert_trait(:project, [:expired])
+
+      context
+      |> produce(:project)
+      |> assert_trait(:project, [:not_expired])
+
+      context
+      |> produce(project: [:not_expired])
+      |> assert_trait(:project, [:not_expired])
+
+      context
+      |> produce(project: [:expired])
+      |> assert_trait(:project, [:expired])
+    end
+
     test "entity doesn't have traits", context do
       assert_raise ArgumentError, "Entity :org doesn't have traits", fn ->
         produce(context, org: [:something])
@@ -451,14 +475,14 @@ defmodule SeedFactoryTest do
         context
         |> produce(virtual_file: :virtual_file1)
         |> produce(virtual_file: :virtual_file2)
-        |> assert_trait(:project, [:with_virtual_file, :with_virtual_file])
+        |> assert_trait(:project, [:not_expired, :with_virtual_file, :with_virtual_file])
 
       context
       |> rebind([virtual_file: :virtual_file1], fn context ->
         context
         |> produce(project: [:with_virtual_file])
       end)
-      |> assert_trait(:project, [:with_virtual_file, :with_virtual_file])
+      |> assert_trait(:project, [:not_expired, :with_virtual_file, :with_virtual_file])
     end
   end
 

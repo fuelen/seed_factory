@@ -636,9 +636,15 @@ defmodule SeedFactory do
 
   defp squash_args(traits, initial_args) do
     Enum.reduce(traits, initial_args, fn trait, acc ->
-      case trait.exec_step.args_pattern do
-        nil -> acc
-        pattern -> deep_merge_maps!(acc, pattern, [])
+      case trait.exec_step do
+        %{args_pattern: pattern} when is_map(pattern) ->
+          deep_merge_maps!(acc, pattern, [])
+
+        %{generate_args: generate_args} when is_function(generate_args) ->
+          deep_merge_maps!(acc, generate_args.(), [])
+
+        _ ->
+          acc
       end
     end)
   end
@@ -843,10 +849,15 @@ defmodule SeedFactory do
     put_in(context, [:__seed_factory_meta__, Access.key!(key)], value)
   end
 
-  defp args_match?(trait, args) do
-    case trait.exec_step.args_pattern do
-      nil -> true
-      args_pattern -> deep_equal_maps?(args_pattern, args)
+  defp args_match?(%{exec_step: exec_step} = _trait, args) do
+    callback = exec_step.args_match || args_pattern_to_args_match_fn(exec_step.args_pattern)
+    callback.(args)
+  end
+
+  defp args_pattern_to_args_match_fn(args_pattern) do
+    case args_pattern do
+      nil -> fn _ -> true end
+      args_pattern -> &deep_equal_maps?(args_pattern, &1)
     end
   end
 

@@ -151,14 +151,70 @@ defmodule SeedFactory.Schema do
 
   ### Options
 
-  * `:args_pattern` - a map with args. If specified, then entity will be marked with the trait only when command args match the pattern.
+  * `:args_match` - a function which accepts command args and must return a boolean. Must be used with `:generate_args` option.
+  If the function returns `true`, then the entity will be marked with the trait.
+  * `:generate_args` - a function which generates a map with args. Must be used with `:args_match` option. The function generates args which satisfy
+  validation in `:args_match` option and is used when the entity is requested with the trait.
+  * `:args_pattern` - a map with args. This option option is less verbose (and limited in functionality) alternative to the combination of `:args_match` and `:generate_args` options.
+  If specified, then entity will be marked with the trait only when command args match the pattern. Also, the pattern will be used as a replacement to `:generate_args` invocation.
 
   ```elixir
-  exec :create_user, args_pattern: %{role: :admin}
+  # all three instuction below are equal
+  exec :create_user
+  exec :create_user, args_pattern: %{}
+  exec :create_user, generate_args: fn -> %{} end, args_match: fn _args -> true end
   ```
 
   ```elixir
-  exec :create_user, args_pattern: %{role: :normal}
+  trait :admin, :user do
+    exec :create_user, args_pattern: %{role: :admin}
+  end
+
+  trait :normal, :user do
+    exec :create_user, args_pattern: %{role: :normal}
+  end
+
+  # the same using the combination of `:args_match` and `:generate_args`
+  trait :admin, :user do
+    exec :create_user do
+      generate_args(fn -> %{role: :admin} end)
+      args_match(&match?(%{role: :admin}, &1)
+    end
+  end
+
+  trait :normal, :user do
+    exec :create_user do
+      generate_args(fn -> %{role: :normal} end)
+      args_match(&match?(%{role: :normal}, &1))
+    end
+  end
+  ```
+
+  ```elixir
+  # an example which shows what is possible with `:args_match` + `:generate_args`
+  # but not with `:args_pattern`
+
+  trait :not_expired, :project do
+    exec :publish_project do
+      args_match(fn args -> Date.compare(Date.utc_today(), args.expiry_date) in [:lt, :eq] end)
+
+      generate_args(fn ->
+        today = Date.utc_today()
+        %{start_date: today, expiry_date: Date.add(today, 21)}
+      end)
+    end
+  end
+
+  trait :expired, :project do
+    exec :publish_project do
+      args_match(fn args -> Date.compare(Date.utc_today(), args.expiry_date) == :gt end)
+
+      generate_args(fn ->
+        today = Date.utc_today()
+        %{start_date: Date.add(today, -22), expiry_date: Date.add(today, -1)}
+      end)
+    end
+  end
   ```
 
   ## Include schemas

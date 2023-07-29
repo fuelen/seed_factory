@@ -53,6 +53,7 @@ defmodule SeedFactory.DSL do
   @exec_step %Spark.Dsl.Entity{
     name: :exec,
     args: [:command_name],
+    transform: {SeedFactory.ExecStep, :transform, []},
     target: SeedFactory.ExecStep,
     schema: SeedFactory.ExecStep.schema()
   }
