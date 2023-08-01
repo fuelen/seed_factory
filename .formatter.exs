@@ -5,6 +5,7 @@ locals_without_parens = [
   update: 1,
   delete: 1,
   produce: 1,
+  param: 1,
   param: 2,
   param: 3,
   from: 1,
