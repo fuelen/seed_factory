@@ -118,7 +118,7 @@ defmodule SeedFactory do
   However, it is not necessary to do so, as `SeedFactory` can automatically execute commands which produce dependent entities.
   The code above has the same effect as a single call to `:create_user` command:
   ```elixir
-  context = exect(context, :create_user, name: "John Doe")
+  context = exec(context, :create_user, name: "John Doe")
   ```
 
   If you're not interested in explicit providing parameters to commands, then you can use `produce/2` function to produce
