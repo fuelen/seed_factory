@@ -26,7 +26,7 @@ defmodule SeedFactoryTest do
 
     assert context.office1.name == "My Office #1"
     assert context.office2.name == "My Office #2"
-    assert context.user1.name == "John Doe"
+    assert context.profile1.name == "John Doe"
   end
 
   describe "nested rebinding" do
@@ -123,7 +123,12 @@ defmodule SeedFactoryTest do
     {context, diff} = with_diff(context, fn -> produce(context, [:draft_project]) end)
     assert diff == %{added: [:draft_project, :office, :org], deleted: [], updated: []}
     {_context, diff} = with_diff(context, fn -> produce(context, [:project]) end)
-    assert diff == %{added: [:profile, :project, :user], deleted: [:draft_project], updated: []}
+
+    assert diff == %{
+             added: [:email, :profile, :project, :user],
+             deleted: [:draft_project],
+             updated: []
+           }
   end
 
   test "deleting a non-existing value from the context", context do
@@ -140,7 +145,12 @@ defmodule SeedFactoryTest do
 
   test "produce entity specified as an atom", context do
     {_context, diff} = with_diff(context, fn -> produce(context, :project) end)
-    assert diff == %{added: [:office, :org, :profile, :project, :user], deleted: [], updated: []}
+
+    assert diff == %{
+             added: [:email, :office, :org, :profile, :project, :user],
+             deleted: [],
+             updated: []
+           }
   end
 
   test "produce unknown entity", context do
@@ -172,12 +182,12 @@ defmodule SeedFactoryTest do
     {_context, diff} =
       with_diff(context, fn ->
         context
-        |> produce(office: :office3, project: :project1)
-        |> produce(office: :office3, project: :project2)
+        |> produce(office: :office3, project: :project1, email: :email1)
+        |> produce(office: :office3, project: :project2, email: :email2)
       end)
 
     assert diff == %{
-             added: [:office3, :profile, :project1, :project2, :user],
+             added: [:email1, :email2, :office3, :profile, :project1, :project2, :user],
              deleted: [],
              updated: []
            }
@@ -189,6 +199,25 @@ defmodule SeedFactoryTest do
       end)
 
     assert diff == %{added: [:office4], deleted: [], updated: []}
+  end
+
+  test "entity which can be produced by multiple commands uses 1st declared command by default",
+       context do
+    context
+    |> produce(:email)
+    |> assert_trait(:email, [:notification_about_published_project])
+    |> assert_trait(:user, [:active, :normal, :unknown_plan])
+    |> assert_trait(:project, [:not_expired])
+  end
+
+  test "entity can be produced by non-default command using traits",
+       context do
+    context =
+      context
+      |> produce(email: [:notification_about_suspended_user])
+      |> assert_trait(:user, [:suspended, :normal, :unknown_plan])
+
+    refute Map.has_key?(context, :project)
   end
 
   test "exec command with generators only", context do

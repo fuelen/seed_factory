@@ -16,7 +16,6 @@ defmodule SeedFactory do
   * update entity (replace the existing entity in the context)
   * delete entity (remove the entity from the context)
 
-  An entity can be produced only by one command.
   When a command is executed, produced entities are assigned to the context using the name of the entity as a key.
   A command has params with instructions on how to generate arguments for a resolver if they are not passed explicitly with `exec/3` function.
   The instruction can be specified using one of these options:
@@ -271,6 +270,9 @@ defmodule SeedFactory do
 
   @doc """
   Produces entities by executing corresponding commands.
+
+  If the same entity can be produced by multiple commands, then the first declared command is used by default.
+  In order to produce the entity using the rest of the commands use traits or `exec/3` explicitly.
 
   ## Examples
 

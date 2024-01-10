@@ -17,26 +17,9 @@ defmodule SeedFactory.Transformers.IndexEntities do
           {instruction.entity, command.name}
         end)
       end)
-      |> tap(&ensure_entity_can_be_produced_only_by_one_command/1)
-      |> Map.new()
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+      |> Map.new(fn {entity_name, command_names} -> {entity_name, hd(command_names)} end)
 
     {:ok, dsl_state |> Transformer.persist(:entities, command_name_by_entity)}
-  end
-
-  defp ensure_entity_can_be_produced_only_by_one_command(entities_with_command_name) do
-    entities_with_command_name
-    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-    |> Enum.each(fn {entity, command_names} ->
-      case command_names do
-        [_] ->
-          :ok
-
-        [first_command_name | rest_command_names] ->
-          raise Spark.Error.DslError,
-            path: [:root, :command, hd(rest_command_names), :produce, entity],
-            message:
-              "only 1 command can produce the entity. Entity #{inspect(entity)} can already be produced by #{inspect(first_command_name)}"
-      end
-    end)
   end
 end

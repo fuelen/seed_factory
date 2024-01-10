@@ -3,8 +3,9 @@ defmodule SchemaExample do
 
   defmodule Org, do: defstruct([:id, :name, :address])
   defmodule Office, do: defstruct([:id, :name, :org_id])
-  defmodule User, do: defstruct([:id, :name, :office_id, :status, :role, :plan])
-  defmodule Profile, do: defstruct([:id, :user_id, :contacts_confirmed?])
+  defmodule User, do: defstruct([:id, :office_id, :status, :role, :plan, :profile_id])
+  defmodule Profile, do: defstruct([:id, :name, :contacts_confirmed?])
+  defmodule Email, do: defstruct([:content, delivered?: false])
 
   defmodule Project do
     defstruct [
@@ -104,12 +105,24 @@ defmodule SchemaExample do
              published_by_id: args.published_by.id,
              start_date: args.start_date,
              expiry_date: args.expiry_date
-         }
+         },
+         email: %Email{content: "Project has been published"}
        }}
     end)
 
     produce :project
+    produce :email
     delete :draft_project
+  end
+
+  command :deliver_email do
+    param :email, entity: :email
+
+    resolve(fn args ->
+      {:ok, %{email: %{args.email | delivered?: true}}}
+    end)
+
+    update :email
   end
 
   command :create_user do
@@ -119,19 +132,19 @@ defmodule SchemaExample do
     param :office_id, entity: :office, map: &get_id/1
 
     resolve(fn args ->
-      user = %User{
+      profile = %Profile{
         name: args.name,
+        id: gen_id(),
+        contacts_confirmed?: args.contacts_confirmed?
+      }
+
+      user = %User{
         office_id: args.office_id,
+        profile_id: profile.id,
         id: gen_id(),
         status: :pending,
         role: args.role,
         plan: :unknown
-      }
-
-      profile = %Profile{
-        id: gen_id(),
-        user_id: user.id,
-        contacts_confirmed?: args.contacts_confirmed?
       }
 
       {:ok, %{user: user, profile: profile}}
@@ -158,9 +171,16 @@ defmodule SchemaExample do
   command :suspend_user do
     param :user, entity: :user, with_traits: [:active]
 
-    resolve(fn args -> {:ok, %{user: %{args.user | status: :suspended}}} end)
+    resolve(fn args ->
+      {:ok,
+       %{
+         user: %{args.user | status: :suspended},
+         email: %Email{content: "User has been suspended"}
+       }}
+    end)
 
     update :user
+    produce :email
   end
 
   command :delete_user do
@@ -193,6 +213,18 @@ defmodule SchemaExample do
 
     produce :virtual_file, from: :file
     update :project
+  end
+
+  trait :delivered, :email do
+    exec :deliver_email
+  end
+
+  trait :notification_about_published_project, :email do
+    exec :publish_project
+  end
+
+  trait :notification_about_suspended_user, :email do
+    exec :suspend_user
   end
 
   trait :pending, :user do
