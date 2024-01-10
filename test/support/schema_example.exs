@@ -253,10 +253,6 @@ defmodule SchemaExample do
     exec :create_user
   end
 
-  trait :contacts_unconfirmed, :profile do
-    exec :create_user, args_pattern: %{contacts_confirmed?: false}
-  end
-
   trait :contacts_confirmed, :profile do
     exec :create_user, args_pattern: %{contacts_confirmed?: true}
   end

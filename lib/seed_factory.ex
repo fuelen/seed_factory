@@ -446,10 +446,14 @@ defmodule SeedFactory do
                 %{by_name: trait_by_name} = fetch_traits!(context, entity_name)
 
                 currently_executed =
-                  current_trait_names
-                  |> select_traits_with_dependencies_by_names(trait_by_name, entity_name)
-                  |> ensure_no_restrictions!(restrictions, entity_name, :current)
-                  |> executed_commands_from_traits()
+                  if current_trait_names == [] do
+                    %{fetch_command_name_by_entity_name!(context, entity_name) => %{}}
+                  else
+                    current_trait_names
+                    |> select_traits_with_dependencies_by_names(trait_by_name, entity_name)
+                    |> ensure_no_restrictions!(restrictions, entity_name, :current)
+                    |> executed_commands_from_traits()
+                  end
 
                 absent_trait_names
                 |> select_traits_with_dependencies_by_names(trait_by_name, entity_name)

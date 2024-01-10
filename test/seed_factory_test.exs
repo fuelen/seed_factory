@@ -210,6 +210,20 @@ defmodule SeedFactoryTest do
     |> assert_trait(:project, [:not_expired])
   end
 
+  test "produce entity with traits when it was already created without traits", context do
+    assert_raise ArgumentError,
+                 """
+                 Args to previously executed command :create_user do not match:
+                   args from previously applied traits: %{}
+                   args for specified traits: %{contacts_confirmed?: true}
+                 """,
+                 fn ->
+                   context
+                   |> produce(:profile)
+                   |> produce(profile: [:contacts_confirmed])
+                 end
+  end
+
   test "entity can be produced by non-default command using traits",
        context do
     context =
@@ -370,7 +384,7 @@ defmodule SeedFactoryTest do
       context
       |> produce([:user, :profile])
       |> assert_trait(:user, [:normal, :pending, :unknown_plan])
-      |> assert_trait(:profile, [:contacts_unconfirmed])
+      |> assert_trait(:profile, [])
 
       context
       |> produce(virtual_file: [:public], user: [:admin, :active], profile: [:contacts_confirmed])
