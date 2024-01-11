@@ -304,7 +304,7 @@ defmodule SeedFactory do
         entities_with_trait_names,
         nil,
         %{},
-        Map.new(entities_with_trait_names)
+        build_restrictions(context, entities_with_trait_names)
       )
       |> exec_requirements(context)
     end)
@@ -345,7 +345,7 @@ defmodule SeedFactory do
         entities_with_trait_names,
         nil,
         %{},
-        Map.new(entities_with_trait_names)
+        build_restrictions(context, entities_with_trait_names)
       )
       |> Map.reject(fn {_key, %{required_by: required_by}} -> nil in required_by end)
       |> exec_requirements(context)
@@ -488,26 +488,17 @@ defmodule SeedFactory do
           else
             if trait_names == [] do
               {command_name, traits} =
-                case restrictions[entity_name] || [] do
-                  [] ->
-                    {fetch_command_name_by_entity_name!(context, entity_name), []}
-
-                  restricted_to_trait_names ->
-                    %{by_name: trait_by_name} = fetch_traits!(context, entity_name)
-
-                    restricted_to_trait_names
-                    |> select_traits_with_dependencies_by_names(trait_by_name, entity_name)
-                    |> Enum.filter(fn trait ->
-                      context
-                      |> fetch_command_by_name!(trait.exec_step.command_name)
-                      |> command_produces?(entity_name)
-                    end)
-                    |> Enum.group_by(& &1.exec_step.command_name)
-                    |> Enum.to_list()
-                    |> case do
-                      [] -> {fetch_command_name_by_entity_name!(context, entity_name), []}
-                      [{command_name, traits}] -> {command_name, traits}
-                    end
+                restrictions.traits
+                |> Enum.filter(fn trait ->
+                  context
+                  |> fetch_command_by_name!(trait.exec_step.command_name)
+                  |> command_produces?(entity_name)
+                end)
+                |> Enum.group_by(& &1.exec_step.command_name)
+                |> Enum.to_list()
+                |> case do
+                  [] -> {fetch_command_name_by_entity_name!(context, entity_name), []}
+                  [{command_name, traits}] -> {command_name, traits}
                 end
 
               {
@@ -566,7 +557,7 @@ defmodule SeedFactory do
   end
 
   defp ensure_no_restrictions!(traits, restrictions, entity_name, scenario) do
-    case restrictions do
+    case restrictions.trait_names_by_entity do
       %{^entity_name => requested_trait_names} ->
         case Enum.find(traits, fn
                %SeedFactory.Trait{from: nil} -> false
@@ -781,7 +772,7 @@ defmodule SeedFactory do
   defp create_dependent_entities_if_needed(context, command, initial_input) do
     lock_creation_of_dependent_entities(context, fn context ->
       context
-      |> command_requirements(command, initial_input, nil, %{}, %{})
+      |> command_requirements(command, initial_input, nil, %{}, build_restrictions(context, []))
       |> exec_requirements(context)
     end)
   end
@@ -906,10 +897,10 @@ defmodule SeedFactory do
 
   defp exec_producing_instructions(context, command, resolver_output) do
     Enum.reduce(command.producing_instructions, context, fn %SeedFactory.ProducingInstruction{
-                                            entity: entity_name,
-                                            from: from
-                                          },
-                                          context ->
+                                                              entity: entity_name,
+                                                              from: from
+                                                            },
+                                                            context ->
       binding_name = binding_name(context, entity_name)
 
       if Map.has_key?(context, binding_name) do
@@ -925,10 +916,10 @@ defmodule SeedFactory do
 
   defp exec_updating_instructions(context, command, resolver_output) do
     Enum.reduce(command.updating_instructions, context, fn %SeedFactory.UpdatingInstruction{
-                                            entity: entity_name,
-                                            from: from
-                                          },
-                                          context ->
+                                                             entity: entity_name,
+                                                             from: from
+                                                           },
+                                                           context ->
       binding_name = binding_name(context, entity_name)
 
       if Map.has_key?(context, binding_name) do
@@ -943,8 +934,10 @@ defmodule SeedFactory do
   end
 
   defp exec_deleting_instructions(context, command) do
-    Enum.reduce(command.deleting_instructions, context, fn %SeedFactory.DeletingInstruction{entity: entity_name},
-                                          context ->
+    Enum.reduce(command.deleting_instructions, context, fn %SeedFactory.DeletingInstruction{
+                                                             entity: entity_name
+                                                           },
+                                                           context ->
       binding_name = binding_name(context, entity_name)
 
       if Map.has_key?(context, binding_name) do
@@ -1008,6 +1001,26 @@ defmodule SeedFactory do
         raise ArgumentError,
               "Input doesn't match defined params. Redundant keys found: #{inspect(keys)}"
     end
+  end
+
+  def build_restrictions(context, entities_with_trait_names) do
+    %{
+      trait_names_by_entity: Map.new(entities_with_trait_names),
+      traits:
+        Enum.flat_map(entities_with_trait_names, fn
+          {_entity_name, []} ->
+            []
+
+          {entity_name, trait_names} ->
+            %{by_name: trait_by_name} = fetch_traits!(context, entity_name)
+
+            select_traits_with_dependencies_by_names(
+              trait_names,
+              trait_by_name,
+              entity_name
+            )
+        end)
+    }
   end
 
   defp maybe_map(value, map) do

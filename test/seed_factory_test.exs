@@ -210,6 +210,12 @@ defmodule SeedFactoryTest do
     |> assert_trait(:project, [:not_expired])
   end
 
+  test "switch to non-default command if it is required by other entities/traits", context do
+    context
+    |> produce(email: [:delivered], user: [:suspended])
+    |> assert_trait(:email, [:delivered, :notification_about_suspended_user])
+  end
+
   test "produce entity with traits when it was already created without traits", context do
     assert_raise ArgumentError,
                  """
