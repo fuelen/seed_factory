@@ -487,10 +487,33 @@ defmodule SeedFactory do
             end
           else
             if trait_names == [] do
-              command_name = fetch_command_name_by_entity_name!(context, entity_name)
+              {command_name, traits} =
+                case restrictions[entity_name] || [] do
+                  [] ->
+                    {fetch_command_name_by_entity_name!(context, entity_name), []}
 
-              {add_command_to_requirements(requirements, command_name, required_by, []),
-               MapSet.put(command_names, command_name)}
+                  restricted_to_trait_names ->
+                    %{by_name: trait_by_name} = fetch_traits!(context, entity_name)
+
+                    restricted_to_trait_names
+                    |> select_traits_with_dependencies_by_names(trait_by_name, entity_name)
+                    |> Enum.filter(fn trait ->
+                      context
+                      |> fetch_command_by_name!(trait.exec_step.command_name)
+                      |> command_produces?(entity_name)
+                    end)
+                    |> Enum.group_by(& &1.exec_step.command_name)
+                    |> Enum.to_list()
+                    |> case do
+                      [] -> {fetch_command_name_by_entity_name!(context, entity_name), []}
+                      [{command_name, traits}] -> {command_name, traits}
+                    end
+                end
+
+              {
+                add_command_to_requirements(requirements, command_name, required_by, traits),
+                MapSet.put(command_names, command_name)
+              }
             else
               %{by_name: trait_by_name} = fetch_traits!(context, entity_name)
 
@@ -519,6 +542,12 @@ defmodule SeedFactory do
       else
         command_requirements(context, command, %{}, command.name, requirements, restrictions)
       end
+    end)
+  end
+
+  defp command_produces?(command, entity_name) do
+    Enum.any?(command.producing_instructions, fn instruction ->
+      instruction.entity == entity_name
     end)
   end
 
