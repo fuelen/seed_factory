@@ -113,7 +113,7 @@ defmodule SeedFactoryTest do
     {user, context} = Map.pop!(context, :user)
 
     assert_raise ArgumentError,
-                 "Cannot update entity :user: key :user doesn't exist in the context",
+                 "Cannot update entity :user while executing :activate_user: key :user doesn't exist in the context",
                  fn ->
                    exec(context, :activate_user, user: user)
                  end
@@ -136,8 +136,8 @@ defmodule SeedFactoryTest do
     {draft_project, context} = Map.pop!(context, :draft_project)
 
     # Maybe, later deleting of non-existing values will be noop, but for the time being the operation is restricted
-    assert_raise RuntimeError,
-                 "Cannot delete entity :draft_project from the context: key :draft_project doesn't exist",
+    assert_raise ArgumentError,
+                 "Cannot delete entity :draft_project from the context while executing :publish_project: key :draft_project doesn't exist",
                  fn ->
                    exec(context, :publish_project, project: draft_project)
                  end
@@ -293,7 +293,7 @@ defmodule SeedFactoryTest do
 
   test "double execution of the same command", context do
     assert_raise ArgumentError,
-                 "Cannot put entity :org to the context: key :org already exists",
+                 "Cannot put entity :org to the context while executing :create_org: key :org already exists",
                  fn ->
                    context
                    |> exec(:create_org)

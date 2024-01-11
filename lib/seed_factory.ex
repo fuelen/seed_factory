@@ -731,9 +731,9 @@ defmodule SeedFactory do
     case command.resolve.(args) do
       {:ok, resolver_output} when is_map(resolver_output) ->
         context
-        |> exec_producing_instructions(command.producing_instructions, resolver_output)
-        |> exec_updating_instructions(command.updating_instructions, resolver_output)
-        |> exec_deleting_instructions(command.deleting_instructions)
+        |> exec_producing_instructions(command, resolver_output)
+        |> exec_updating_instructions(command, resolver_output)
+        |> exec_deleting_instructions(command)
         |> sync_current_traits(command, args)
 
       {:error, error} ->
@@ -904,8 +904,8 @@ defmodule SeedFactory do
     end)
   end
 
-  defp exec_producing_instructions(context, instructions, resolver_output) do
-    Enum.reduce(instructions, context, fn %SeedFactory.ProducingInstruction{
+  defp exec_producing_instructions(context, command, resolver_output) do
+    Enum.reduce(command.producing_instructions, context, fn %SeedFactory.ProducingInstruction{
                                             entity: entity_name,
                                             from: from
                                           },
@@ -914,7 +914,7 @@ defmodule SeedFactory do
 
       if Map.has_key?(context, binding_name) do
         message =
-          "Cannot put entity #{inspect(entity_name)} to the context: key #{inspect(binding_name)} already exists"
+          "Cannot put entity #{inspect(entity_name)} to the context while executing #{inspect(command.name)}: key #{inspect(binding_name)} already exists"
 
         raise ArgumentError, message
       else
@@ -923,8 +923,8 @@ defmodule SeedFactory do
     end)
   end
 
-  defp exec_updating_instructions(context, instructions, resolver_output) do
-    Enum.reduce(instructions, context, fn %SeedFactory.UpdatingInstruction{
+  defp exec_updating_instructions(context, command, resolver_output) do
+    Enum.reduce(command.updating_instructions, context, fn %SeedFactory.UpdatingInstruction{
                                             entity: entity_name,
                                             from: from
                                           },
@@ -935,15 +935,15 @@ defmodule SeedFactory do
         Map.put(context, binding_name, Map.fetch!(resolver_output, from))
       else
         message =
-          "Cannot update entity #{inspect(entity_name)}: key #{inspect(binding_name)} doesn't exist in the context"
+          "Cannot update entity #{inspect(entity_name)} while executing #{inspect(command.name)}: key #{inspect(binding_name)} doesn't exist in the context"
 
         raise ArgumentError, message
       end
     end)
   end
 
-  defp exec_deleting_instructions(context, instructions) do
-    Enum.reduce(instructions, context, fn %SeedFactory.DeletingInstruction{entity: entity_name},
+  defp exec_deleting_instructions(context, command) do
+    Enum.reduce(command.deleting_instructions, context, fn %SeedFactory.DeletingInstruction{entity: entity_name},
                                           context ->
       binding_name = binding_name(context, entity_name)
 
@@ -951,9 +951,9 @@ defmodule SeedFactory do
         Map.delete(context, binding_name)
       else
         message =
-          "Cannot delete entity #{inspect(entity_name)} from the context: key #{inspect(binding_name)} doesn't exist"
+          "Cannot delete entity #{inspect(entity_name)} from the context while executing #{inspect(command.name)}: key #{inspect(binding_name)} doesn't exist"
 
-        raise message
+        raise ArgumentError, message
       end
     end)
   end
