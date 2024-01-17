@@ -3,12 +3,14 @@ defmodule SeedFactory do
   A utility for producing entities using business logic defined by your application.
 
   The main idea of `SeedFactory` is to produce entities in tests according to your application business logic (read as context functions if you use https://hexdocs.pm/phoenix/contexts.html)
-  whenever it is possible and avoid direct inserts to the database (opposed to `ex_machina`).
+  whenever it is possible and avoid direct inserts to the database (opposed to [`ex_machina`](https://hex.pm/packages/ex_machina)).
   This approach allows to minimize testing of invalid states as you're not forced to keep complex database structure in your head in order to prepare test data.
 
   **Context**, **entities** and **commands** are the core concepts of the library.
 
-  Context is a map which can be populated by entities using commands.
+  Context is a map which can be populated with entities using commands.
+  Entities can be any type and you're not strictly tied to structs defined by [`ecto`](https://hex.pm/packages/ecto).
+
   The schema with instructions on how commands modify context is described using DSL with the help of `SeedFactory.Schema` module.
 
   Commands can be used to:
@@ -87,14 +89,14 @@ defmodule SeedFactory do
   ```
   The schema above describes how to produce 3 entities (`:company`, `:user` and `:profile`) using 2 commands (`:create_user` and `:create_company`).
   There is a third command which only updates the `:user` entity.
-  Also, it describes traits of `:user` entity.
+  There are 4 traits defined for the `:user` entity.
 
-  In order to use the schema, put metadata about it to the context using `init/2` function:
+  In order to start using the schema, put metadata about it to the context using `init/2` function:
   ```elixir
   context = %{}
   context = init(context, MyApp.SeedFactorySchema)
   ```
-  If you use `SeedFactory` in tests, use `SeedFactory.Test` helper module instead.
+  If you use `SeedFactory` in tests, use `SeedFactory.Test` helper module instead, it automatically does initialization using `setup_all` callback.
 
   Now, `exec/2` function can be used to execute a command:
   ```elixir
@@ -120,15 +122,15 @@ defmodule SeedFactory do
   context = exec(context, :create_user, name: "John Doe")
   ```
 
-  If you're not interested in explicit providing parameters to commands, then you can use `produce/2` function to produce
-  requested entities with automatic execution of all dependend commands:
+  If you're not interested in explicit providing of parameters to commands, then you can use `produce/2` function to produce
+  requested entities with automatic execution of all dependent commands:
   ```elixir
   context = produce(context, :user)
   ```
   Even though `:user` is the only entity specified explicitly, `context` will have 3 new keys: `:company`, `:user` and `:profile`.
 
   > #### Tip {: .tip}
-  > It is recommended to specify all entities explicitly in which you're insterested:
+  > It is recommended to explicitly specify all entities in which you're insterested:
   > ```elixir
   > # good
   > %{user: user} = produce(contex, :user)
@@ -149,7 +151,7 @@ defmodule SeedFactory do
   context =
     context
     |> rebind([user: :user1, profile: :profile1], &exec(&1, :create_user))
-    |> rebind([user: :user2, profile: :profile1], &exec(&1, :create_user))
+    |> rebind([user: :user2, profile: :profile2], &exec(&1, :create_user))
   ```
   The snippet above puts the following keys to the context: `:company`, `:user1`, `:profile1`, `:user2`, `:profile2`.
   The `:company` is shared in this case, so two users have different profiles and belong to the same company.
@@ -185,14 +187,14 @@ defmodule SeedFactory do
   # }
   ```
 
-  To achive the same result, traits can be passed to `produce/2`:
+  The same result can be achieved by passing traits using `produce/2`:
   ```elixir
   produce(context, user: [:admin, :active])
   ```
 
   If you want to specify traits and assign an entity to the context with the different name, then use `:as` option:
   ```elixir
-  %{admin: admin} = produce(context, user: [:admin, as: :admin])
+  %{active_admin: active_admin} = produce(context, user: [:admin, :active, as: :active_admin])
   ```
   """
   @type context :: map()
@@ -206,7 +208,7 @@ defmodule SeedFactory do
 
       iex> context = %{}
       ...> init(context, MySeedFactorySchema)
-      %{...}
+      %{__seed_factory_meta__: #SeedFactory.Meta<...>}
   """
   @spec init(context(), schema :: module) :: context()
   def init(context, schema) do
@@ -324,8 +326,8 @@ defmodule SeedFactory do
       # pre_produce produces a company and puts it into context,
       # so produced user1 and user2 will belong to the same company
       context = pre_produce(context, :user)
-      %{user: user1} = pre_produce(context, :user)
-      %{user: user2} = pre_produce(context, :user)
+      %{user: user1} = produce(context, :user)
+      %{user: user2} = produce(context, :user)
   """
   @spec pre_produce(
           context(),
@@ -746,19 +748,19 @@ defmodule SeedFactory do
         |> rebind([user: :user1, profile: :profile1], &exec(:create_user, role: :admin))
         |> rebind([user: :user2, profile: :profile2], &exec(:create_user, role: :admin))
 
-      # The code above is a bit wordy in a case when all we need are :user entitities. We have to write
+      # The code above is a bit wordy in a case when all we need are :user entities. We have to write
       # rebinding for :profile even though we are't interested in it.
 
       # A less wordy alternative is:
       context = produce(context, list_of_all_dependencies_with_their_traits)
-      %{user: user1} = exec(context, :create_user)
-      %{user: user2} = exec(context, :create_user)
+      %{user: user1} = exec(context, :create_user, role: :admin)
+      %{user: user2} = exec(context, :create_user, role: :admin)
 
       # However, you have to explicitly enumerate all the dependencies.
       # It can be more compact with `pre_exec` function:
       context = pre_exec(context, :create_user)
-      %{user: user1} = exec(context, :create_user)
-      %{user: user2} = exec(context, :create_user)
+      %{user: user1} = exec(context, :create_user, role: :admin)
+      %{user: user2} = exec(context, :create_user, role: :admin)
   """
   @spec pre_exec(context(), command_name :: atom(), initial_input :: map() | keyword()) ::
           context()
@@ -1003,7 +1005,7 @@ defmodule SeedFactory do
     end
   end
 
-  def build_restrictions(context, entities_with_trait_names) do
+  defp build_restrictions(context, entities_with_trait_names) do
     %{
       trait_names_by_entity: Map.new(entities_with_trait_names),
       traits:
