@@ -6,6 +6,8 @@ defmodule SchemaExample do
   defmodule User, do: defstruct([:id, :office_id, :status, :role, :plan, :profile_id])
   defmodule Profile, do: defstruct([:id, :name, :contacts_confirmed?])
   defmodule Email, do: defstruct([:content, delivered?: false])
+  defmodule Proposal, do: defstruct([:version])
+  defmodule FilesRemovalTask, do: defstruct([:id, :profile_id])
 
   defmodule Project do
     defstruct [
@@ -13,6 +15,7 @@ defmodule SchemaExample do
       :name,
       :office_id,
       :draft?,
+      :source,
       :published_by_id,
       :virtual_files,
       :expiry_date,
@@ -83,11 +86,58 @@ defmodule SchemaExample do
     param :office, entity: :office
 
     resolve(fn args ->
-      project = %Project{name: args.name, draft?: true, office_id: args.office.id, id: gen_id()}
+      project = %Project{
+        name: args.name,
+        draft?: true,
+        office_id: args.office.id,
+        id: gen_id(),
+        source: :internal
+      }
+
       {:ok, %{project: project}}
     end)
 
     produce :draft_project, from: :project
+  end
+
+  command :import_draft_project_from_third_party_service do
+    param :name, generate: &random_string/0
+    param :office, entity: :office
+
+    resolve(fn args ->
+      project = %Project{
+        name: args.name,
+        draft?: true,
+        office_id: args.office.id,
+        id: gen_id(),
+        source: :third_party
+      }
+
+      {:ok, %{project: project, imported_item_log: "draft from third-party service"}}
+    end)
+
+    produce :draft_project, from: :project
+    produce :imported_item_log
+  end
+
+  command :import_draft_project_from_ftp_server do
+    param :name, generate: &random_string/0
+    param :office, entity: :office
+
+    resolve(fn args ->
+      project = %Project{
+        name: args.name,
+        draft?: true,
+        office_id: args.office.id,
+        id: gen_id(),
+        source: :ftp
+      }
+
+      {:ok, %{project: project, imported_item_log: "draft from FTP-server"}}
+    end)
+
+    produce :draft_project, from: :project
+    produce :imported_item_log
   end
 
   command :publish_project do
@@ -183,6 +233,27 @@ defmodule SchemaExample do
     produce :email
   end
 
+  command :anonymize_profile_of_suspended_user do
+    param :user, entity: :user, with_traits: [:suspended]
+    param :profile, entity: :profile
+
+    resolve(fn args ->
+      {:ok, %{profile: %{args.profile | name: "Anonymized"}}}
+    end)
+
+    update :profile
+  end
+
+  command :schedule_files_removal do
+    param :profile, entity: :profile, with_traits: [:anonymized]
+
+    resolve(fn args ->
+      {:ok, %{task: %FilesRemovalTask{id: gen_id(), profile_id: args.profile.id}}}
+    end)
+
+    produce :files_removal_task, from: :task
+  end
+
   command :delete_user do
     param :user, entity: :user, with_traits: [:active]
 
@@ -275,8 +346,20 @@ defmodule SchemaExample do
     exec :activate_user, args_pattern: %{finances: %{plan: :paid}}
   end
 
+  trait :anonymized, :profile do
+    exec :anonymize_profile_of_suspended_user
+  end
+
   trait :with_virtual_file, :project do
     exec :create_virtual_file
+  end
+
+  trait :third_party, :draft_project do
+    exec :import_draft_project_from_third_party_service
+  end
+
+  trait :ftp_server, :draft_project do
+    exec :import_draft_project_from_ftp_server
   end
 
   trait :not_expired, :project do
@@ -299,5 +382,59 @@ defmodule SchemaExample do
         %{start_date: Date.add(today, -22), expiry_date: Date.add(today, -1)}
       end)
     end
+  end
+
+  command :add_proposal_v1 do
+    param :draft_project, entity: :draft_project
+
+    resolve(fn args ->
+      {:ok, %{proposal: %Proposal{version: 1}}}
+    end)
+
+    produce :proposal
+  end
+
+  command :add_proposal_v2 do
+    param :draft_project, entity: :draft_project
+
+    resolve(fn args ->
+      {:ok, %{proposal: %Proposal{version: 2}}}
+    end)
+
+    produce :proposal
+  end
+
+  command :start_approval_process do
+    resolve(fn _ ->
+      {:ok, %{approval_process: :process, candidate_profile: :candidate_profile}}
+    end)
+
+    produce :approval_process
+    produce :candidate_profile
+  end
+
+  command :approve_candidate do
+    param :approval_process, entity: :approval_process
+
+    resolve(fn _ ->
+      {:ok, %{approval_process: :finished_process, approved_candidate: :approved_candidate}}
+    end)
+
+    update :approval_process
+    produce :approved_candidate
+  end
+
+  command :create_approved_candidate do
+    resolve(fn _ -> {:ok, %{candidate_profile: :candidate_profile}} end)
+    produce :candidate_profile
+    produce :approved_candidate
+  end
+
+  trait :approved_immediatelly, :approved_candidate do
+    exec :create_approved_candidate
+  end
+
+  trait :approved_using_approval_process, :approved_candidate do
+    exec :approve_candidate
   end
 end

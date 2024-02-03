@@ -210,10 +210,193 @@ defmodule SeedFactoryTest do
     |> assert_trait(:project, [:not_expired])
   end
 
-  test "switch to non-default command if it is required by other entities/traits", context do
-    context
-    |> produce(email: [:delivered], user: [:suspended])
-    |> assert_trait(:email, [:delivered, :notification_about_suspended_user])
+  describe "resolution when the an entity can be produced by multiple commands" do
+    test "default command for :email entity is :publish_project", context do
+      # one entity is specified
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce(:email)
+          |> assert_trait(:email, [:notification_about_published_project])
+        end)
+
+      assert diff == %{
+               added: [:email, :office, :org, :profile, :project, :user],
+               deleted: [],
+               updated: []
+             }
+
+      # when multiple entities are specified
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce([:email, :org])
+          |> assert_trait(:email, [:notification_about_published_project])
+          |> assert_trait(:user, [:active, :normal, :unknown_plan])
+        end)
+
+      assert diff == %{
+               added: [:email, :office, :org, :profile, :project, :user],
+               deleted: [],
+               updated: []
+             }
+    end
+
+    test "switch to another command for producing :email if there is an additional requirement",
+         context do
+      # all instructions for producing email are on the top level (user: [:suspended] produces an email)
+
+      # `:email` is specified without traits
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce([:email, user: [:suspended]])
+          |> assert_trait(:email, [:notification_about_suspended_user])
+        end)
+
+      assert diff == %{added: [:email, :office, :org, :profile, :user], deleted: [], updated: []}
+
+      # `:email` specified with traits
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce(email: [:delivered], user: [:suspended])
+          |> assert_trait(:email, [:delivered, :notification_about_suspended_user])
+        end)
+
+      assert diff == %{
+               added: [:email, :office, :org, :profile, :user],
+               deleted: [],
+               updated: []
+             }
+
+      # only one of the instructions about producing email is on the top level
+      # (profile: [:anonymized] depends on a command that produces an email)
+
+      # `email` with traits
+
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce(email: [:delivered], profile: [:anonymized])
+          |> assert_trait(:email, [:delivered, :notification_about_suspended_user])
+        end)
+
+      assert diff == %{
+               added: [:email, :office, :org, :profile, :user],
+               deleted: [],
+               updated: []
+             }
+
+      # `email` without traits
+
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce([:email, profile: [:anonymized]])
+          |> assert_trait(:email, [:notification_about_suspended_user])
+        end)
+
+      assert diff == %{
+               added: [:email, :office, :org, :profile, :user],
+               deleted: [],
+               updated: []
+             }
+
+      # only one of the instructions about producing email is on the top level
+      # (files_removal_task: [] is 1 level deeper than profile: [:anonymized] which was used in previous assertions)
+
+      # `email` without traits
+
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce(email: [], files_removal_task: [])
+          |> assert_trait(:email, [:notification_about_suspended_user])
+        end)
+
+      assert diff == %{
+               added: [:email, :files_removal_task, :office, :org, :profile, :user],
+               deleted: [],
+               updated: []
+             }
+
+      # `email` with traits
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce(email: [:delivered], files_removal_task: [])
+          |> assert_trait(:email, [:delivered, :notification_about_suspended_user])
+        end)
+
+      assert diff == %{
+               added: [:email, :files_removal_task, :office, :org, :profile, :user],
+               deleted: [],
+               updated: []
+             }
+
+      # two conflict groups: for draft_project and for email
+
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce(draft_project: [], email: [])
+          |> assert_trait(:email, [:notification_about_published_project])
+          |> assert_trait(:project, [:not_expired])
+        end)
+
+      assert diff == %{
+               added: [:email, :office, :org, :profile, :project, :user],
+               deleted: [],
+               updated: []
+             }
+
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce([:draft_project, email: [:delivered]])
+          |> assert_trait(:email, [:delivered, :notification_about_published_project])
+        end)
+
+      assert diff == %{
+               added: [:email, :office, :org, :profile, :project, :user],
+               deleted: [],
+               updated: []
+             }
+    end
+
+    test "execute command that deletes entity only when it is no longer needed", context do
+      # when we have a graph where add_proposal_v1 requires draft_project and publish_project
+      # requires draft_project as well, but publish_project deletes it from the context, so publish_project MUST
+      # be executed before add_proposal_v1.
+      #                            ┌──►add_proposal_v1─┐
+      #                            │                   │
+      #                            │                   │
+      # ────►create_draft_project──┤                   ├───►nil
+      #                            │                   │
+      #                            │                   │
+      #                            └──►publish_project─┘
+      # For this reason we add additional relations, so the graph above becomes
+      #                            ┌──►add_proposal_v1──┬───────────────┐
+      #                            │                    │               │
+      #                            │                    │               │
+      # ────►create_draft_project──┤                    │               ├─►nil
+      #                            │                    │               │
+      #                            │                    ▼               │
+      #                            └───────────────────►publish_project─┘
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce(proposal: [], project: [])
+          |> assert_trait(:project, [:not_expired])
+        end)
+
+      assert diff == %{
+               added: [:email, :office, :org, :profile, :project, :proposal, :user],
+               deleted: [],
+               updated: []
+             }
+    end
   end
 
   test "produce entity with traits when it was already created without traits", context do
@@ -407,6 +590,51 @@ defmodule SeedFactoryTest do
       |> assert_trait(:user, [:admin, :active, :unknown_plan])
     end
 
+    test "different conflict groups of the same command merge into 1 which is smaller", context do
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce([:draft_project, :proposal, :imported_item_log])
+          |> assert_trait(:draft_project, [:third_party])
+        end)
+
+      assert diff == %{
+               added: [:draft_project, :imported_item_log, :office, :org, :proposal],
+               deleted: [],
+               updated: []
+             }
+
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce([:proposal, :imported_item_log])
+          |> assert_trait(:draft_project, [:third_party])
+        end)
+
+      assert diff == %{
+               added: [:draft_project, :imported_item_log, :office, :org, :proposal],
+               deleted: [],
+               updated: []
+             }
+
+      {_context, diff} =
+        with_diff(context, fn ->
+          context
+          |> produce([:imported_item_log, :proposal])
+          |> assert_trait(:draft_project, [:third_party])
+        end)
+
+      assert diff == %{
+               added: [:draft_project, :imported_item_log, :office, :org, :proposal],
+               deleted: [],
+               updated: []
+             }
+
+      context
+      |> produce([:approved_candidate, :candidate_profile])
+      |> assert_trait(:approved_candidate, [:approved_using_approval_process])
+    end
+
     test "specify traits which conflict with previously applied traits", context do
       assert_raise ArgumentError,
                    """
@@ -554,10 +782,17 @@ defmodule SeedFactoryTest do
   test "pre_produce", context do
     {_context, diff} =
       with_diff(context, fn ->
+        pre_produce(context, :office)
+      end)
+
+    assert diff == %{added: [:org], deleted: [], updated: []}
+
+    {_context, diff} =
+      with_diff(context, fn ->
         pre_produce(context, user: [:active])
       end)
 
-    assert diff == %{added: [:office, :org], deleted: [], updated: []}
+    assert diff == %{added: [:office, :org, :profile, :user], deleted: [], updated: []}
 
     {_context, diff} =
       with_diff(context, fn ->
@@ -568,13 +803,16 @@ defmodule SeedFactoryTest do
 
     {_context, diff} =
       with_diff(context, fn ->
-        pre_produce(context, :office)
+        pre_produce(context, [:office, :virtual_file])
       end)
 
     assert diff == %{added: [:org], deleted: [], updated: []}
   end
 
   defp assert_trait(context, binding_name, expected_traits) when is_list(expected_traits) do
+    assert Map.has_key?(context, binding_name),
+           "No produced entity bound to #{inspect(binding_name)}"
+
     current_traits = Map.fetch!(context.__seed_factory_meta__.current_traits, binding_name)
     assert Enum.sort(expected_traits) == Enum.sort(current_traits)
 

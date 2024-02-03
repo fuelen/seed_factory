@@ -18,7 +18,6 @@ defmodule SeedFactory.Transformers.IndexEntities do
         end)
       end)
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-      |> Map.new(fn {entity_name, command_names} -> {entity_name, hd(command_names)} end)
 
     {:ok, dsl_state |> Transformer.persist(:entities, command_name_by_entity)}
   end

@@ -2,19 +2,32 @@ defmodule SeedFactory.SchemaTest do
   use ExUnit.Case, async: true
 
   @schema_example_entities %{
-    office: :create_office,
-    org: :create_org,
-    project: :publish_project,
-    draft_project: :create_draft_project,
-    user: :create_user,
-    profile: :create_user,
-    virtual_file: :create_virtual_file,
-    email: :publish_project
+    draft_project: [
+      :create_draft_project,
+      :import_draft_project_from_third_party_service,
+      :import_draft_project_from_ftp_server
+    ],
+    email: [:publish_project, :suspend_user],
+    office: [:create_office],
+    org: [:create_org],
+    profile: [:create_user],
+    project: [:publish_project],
+    user: [:create_user],
+    virtual_file: [:create_virtual_file],
+    files_removal_task: [:schedule_files_removal],
+    proposal: [:add_proposal_v1, :add_proposal_v2],
+    imported_item_log: [
+      :import_draft_project_from_third_party_service,
+      :import_draft_project_from_ftp_server
+    ],
+    approval_process: [:start_approval_process],
+    approved_candidate: [:approve_candidate, :create_approved_candidate],
+    candidate_profile: [:start_approval_process, :create_approved_candidate]
   }
 
   test 'SchemaExampleExtended - persisted data' do
     assert Spark.Dsl.Extension.get_persisted(SchemaExampleExtended, :entities) ==
-             Map.merge(@schema_example_entities, %{conn: :build_conn})
+             Map.merge(@schema_example_entities, %{conn: [:build_conn]})
   end
 
   test "persisted data - SchemaExample" do
@@ -58,9 +71,86 @@ defmodule SeedFactory.SchemaTest do
                  }
                },
                producing_instructions: [],
+               required_entities: MapSet.new([:user]),
                resolve: &SchemaExample.resolve_0_generated_A318D00A9A01DC9FF758958FF2E3647B/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
+               ]
+             },
+             add_proposal_v1: %SeedFactory.Command{
+               deleting_instructions: [],
+               name: :add_proposal_v1,
+               params: %{
+                 draft_project: %SeedFactory.Parameter{
+                   entity: :draft_project,
+                   generate: nil,
+                   map: nil,
+                   name: :draft_project,
+                   params: %{},
+                   type: :entity,
+                   value: nil,
+                   with_traits: nil
+                 }
+               },
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{entity: :proposal, from: :proposal}
+               ],
+               required_entities: MapSet.new([:draft_project]),
+               resolve: &SchemaExample.resolve_0_generated_EC80F6FBDA51FD9974A16539E87B6B75/1,
+               updating_instructions: []
+             },
+             add_proposal_v2: %SeedFactory.Command{
+               deleting_instructions: [],
+               name: :add_proposal_v2,
+               params: %{
+                 draft_project: %SeedFactory.Parameter{
+                   entity: :draft_project,
+                   generate: nil,
+                   map: nil,
+                   name: :draft_project,
+                   params: %{},
+                   type: :entity,
+                   value: nil,
+                   with_traits: nil
+                 }
+               },
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{entity: :proposal, from: :proposal}
+               ],
+               required_entities: MapSet.new([:draft_project]),
+               resolve: &SchemaExample.resolve_0_generated_7F9023408EB309308B2A8A9C71AEAACF/1,
+               updating_instructions: []
+             },
+             anonymize_profile_of_suspended_user: %SeedFactory.Command{
+               deleting_instructions: [],
+               name: :anonymize_profile_of_suspended_user,
+               params: %{
+                 profile: %SeedFactory.Parameter{
+                   entity: :profile,
+                   generate: nil,
+                   map: nil,
+                   name: :profile,
+                   params: %{},
+                   type: :entity,
+                   value: nil,
+                   with_traits: nil
+                 },
+                 user: %SeedFactory.Parameter{
+                   entity: :user,
+                   generate: nil,
+                   map: nil,
+                   name: :user,
+                   params: %{},
+                   type: :entity,
+                   value: nil,
+                   with_traits: [:suspended]
+                 }
+               },
+               producing_instructions: [],
+               required_entities: MapSet.new([:profile, :user]),
+               resolve: &SchemaExample.resolve_0_generated_D1E6C7204BDE4ACD01B58915C3CEC71E/1,
+               updating_instructions: [
+                 %SeedFactory.UpdatingInstruction{entity: :profile, from: :profile}
                ]
              },
              create_draft_project: %SeedFactory.Command{
@@ -92,7 +182,8 @@ defmodule SeedFactory.SchemaTest do
                producing_instructions: [
                  %SeedFactory.ProducingInstruction{entity: :draft_project, from: :project}
                ],
-               resolve: &SchemaExample.resolve_0_generated_F9B92FE2B5FD0A57A27FB751FF0F0F04/1,
+               required_entities: MapSet.new([:office]),
+               resolve: &SchemaExample.resolve_0_generated_DA51EA117C13FE36C9A0B18E5D9ECC12/1,
                updating_instructions: []
              },
              create_office: %SeedFactory.Command{
@@ -124,6 +215,7 @@ defmodule SeedFactory.SchemaTest do
                producing_instructions: [
                  %SeedFactory.ProducingInstruction{entity: :office, from: :office}
                ],
+               required_entities: MapSet.new([:org]),
                resolve: &SchemaExample.resolve_0_generated_DE3F3BC82EB1A0ECFC65DA3209C3BCF5/1,
                updating_instructions: []
              },
@@ -179,6 +271,7 @@ defmodule SeedFactory.SchemaTest do
                producing_instructions: [
                  %SeedFactory.ProducingInstruction{entity: :org, from: :org}
                ],
+               required_entities: MapSet.new([]),
                resolve: &SchemaExample.resolve_0_generated_C9E261A7CEB6327F8844F3B180B40C30/1,
                updating_instructions: []
              },
@@ -232,6 +325,7 @@ defmodule SeedFactory.SchemaTest do
                  %SeedFactory.ProducingInstruction{entity: :user, from: :user},
                  %SeedFactory.ProducingInstruction{entity: :profile, from: :profile}
                ],
+               required_entities: MapSet.new([:office]),
                resolve: &SchemaExample.resolve_0_generated_81107CB99CF13C577404E2DB414831CD/1,
                updating_instructions: []
              },
@@ -284,6 +378,7 @@ defmodule SeedFactory.SchemaTest do
                producing_instructions: [
                  %SeedFactory.ProducingInstruction{entity: :virtual_file, from: :file}
                ],
+               required_entities: MapSet.new([:project, :user]),
                resolve: &SchemaExample.resolve_0_generated_2B36E339936F23FD426D06D5490D9BC3/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :project, from: :project}
@@ -305,7 +400,104 @@ defmodule SeedFactory.SchemaTest do
                  }
                },
                producing_instructions: [],
+               required_entities: MapSet.new([:user]),
                resolve: &SchemaExample.resolve_0_generated_BB7D80C861BBA279E03166977C76BBCF/1,
+               updating_instructions: []
+             },
+             deliver_email: %SeedFactory.Command{
+               deleting_instructions: [],
+               name: :deliver_email,
+               params: %{
+                 email: %SeedFactory.Parameter{
+                   entity: :email,
+                   generate: nil,
+                   map: nil,
+                   name: :email,
+                   params: %{},
+                   type: :entity,
+                   value: nil,
+                   with_traits: nil
+                 }
+               },
+               producing_instructions: [],
+               required_entities: MapSet.new([:email]),
+               resolve: &SchemaExample.resolve_0_generated_6E4FC1C21E971D9D56C04FE600DAAD8B/1,
+               updating_instructions: [
+                 %SeedFactory.UpdatingInstruction{entity: :email, from: :email}
+               ]
+             },
+             import_draft_project_from_ftp_server: %SeedFactory.Command{
+               deleting_instructions: [],
+               name: :import_draft_project_from_ftp_server,
+               params: %{
+                 name: %SeedFactory.Parameter{
+                   entity: nil,
+                   generate:
+                     &SchemaExample.generate_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                   map: nil,
+                   name: :name,
+                   params: %{},
+                   type: :generator,
+                   value: nil,
+                   with_traits: nil
+                 },
+                 office: %SeedFactory.Parameter{
+                   entity: :office,
+                   generate: nil,
+                   map: nil,
+                   name: :office,
+                   params: %{},
+                   type: :entity,
+                   value: nil,
+                   with_traits: nil
+                 }
+               },
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{entity: :draft_project, from: :project},
+                 %SeedFactory.ProducingInstruction{
+                   entity: :imported_item_log,
+                   from: :imported_item_log
+                 }
+               ],
+               required_entities: MapSet.new([:office]),
+               resolve: &SchemaExample.resolve_0_generated_ADB90C910B850CBFB4B13F053BF72B33/1,
+               updating_instructions: []
+             },
+             import_draft_project_from_third_party_service: %SeedFactory.Command{
+               deleting_instructions: [],
+               name: :import_draft_project_from_third_party_service,
+               params: %{
+                 name: %SeedFactory.Parameter{
+                   entity: nil,
+                   generate:
+                     &SchemaExample.generate_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                   map: nil,
+                   name: :name,
+                   params: %{},
+                   type: :generator,
+                   value: nil,
+                   with_traits: nil
+                 },
+                 office: %SeedFactory.Parameter{
+                   entity: :office,
+                   generate: nil,
+                   map: nil,
+                   name: :office,
+                   params: %{},
+                   type: :entity,
+                   value: nil,
+                   with_traits: nil
+                 }
+               },
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{entity: :draft_project, from: :project},
+                 %SeedFactory.ProducingInstruction{
+                   entity: :imported_item_log,
+                   from: :imported_item_log
+                 }
+               ],
+               required_entities: MapSet.new([:office]),
+               resolve: &SchemaExample.resolve_0_generated_384DDC585135AABB92BBB73605C5BDCD/1,
                updating_instructions: []
              },
              publish_project: %SeedFactory.Command{
@@ -359,6 +551,7 @@ defmodule SeedFactory.SchemaTest do
                  %SeedFactory.ProducingInstruction{entity: :project, from: :project},
                  %SeedFactory.ProducingInstruction{entity: :email, from: :email}
                ],
+               required_entities: MapSet.new([:draft_project, :user]),
                resolve: &SchemaExample.resolve_0_generated_5168801D2C23FAC011576618E2D52B2C/1,
                updating_instructions: []
              },
@@ -367,6 +560,7 @@ defmodule SeedFactory.SchemaTest do
                name: :raise_exception,
                params: %{},
                producing_instructions: [],
+               required_entities: MapSet.new([]),
                resolve: &SchemaExample.resolve_0_generated_9B193121A70CFA40AEB7E70819330466/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
@@ -377,10 +571,33 @@ defmodule SeedFactory.SchemaTest do
                name: :resolve_with_error,
                params: %{},
                producing_instructions: [],
+               required_entities: MapSet.new([]),
                resolve: &SchemaExample.resolve_0_generated_86DFA5551DF1E7069C035938144FEFFE/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
                ]
+             },
+             schedule_files_removal: %SeedFactory.Command{
+               deleting_instructions: [],
+               name: :schedule_files_removal,
+               params: %{
+                 profile: %SeedFactory.Parameter{
+                   entity: :profile,
+                   generate: nil,
+                   map: nil,
+                   name: :profile,
+                   params: %{},
+                   type: :entity,
+                   value: nil,
+                   with_traits: [:anonymized]
+                 }
+               },
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{entity: :files_removal_task, from: :task}
+               ],
+               required_entities: MapSet.new([:profile]),
+               resolve: &SchemaExample.resolve_0_generated_7095E2EB33E2BEF6FAA40BFD4D7473A1/1,
+               updating_instructions: []
              },
              suspend_user: %SeedFactory.Command{
                deleting_instructions: [],
@@ -400,31 +617,77 @@ defmodule SeedFactory.SchemaTest do
                producing_instructions: [
                  %SeedFactory.ProducingInstruction{entity: :email, from: :email}
                ],
+               required_entities: MapSet.new([:user]),
                resolve: &SchemaExample.resolve_0_generated_8268E1BC8B7D772BCC0110A498C06DD6/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
                ]
              },
-             deliver_email: %SeedFactory.Command{
-               name: :deliver_email,
-               producing_instructions: [],
+             approve_candidate: %SeedFactory.Command{
+               name: :approve_candidate,
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{
+                   entity: :approved_candidate,
+                   from: :approved_candidate
+                 }
+               ],
                updating_instructions: [
-                 %SeedFactory.UpdatingInstruction{entity: :email, from: :email}
+                 %SeedFactory.UpdatingInstruction{
+                   entity: :approval_process,
+                   from: :approval_process
+                 }
                ],
                deleting_instructions: [],
-               resolve: &SchemaExample.resolve_0_generated_6E4FC1C21E971D9D56C04FE600DAAD8B/1,
+               required_entities: MapSet.new([:approval_process]),
+               resolve: &SchemaExample.resolve_0_generated_6116A6271F7F0CE89A7222F6637E7A8F/1,
                params: %{
-                 email: %SeedFactory.Parameter{
-                   name: :email,
+                 approval_process: %SeedFactory.Parameter{
+                   name: :approval_process,
                    params: %{},
                    map: nil,
                    with_traits: nil,
                    value: nil,
                    generate: nil,
-                   entity: :email,
+                   entity: :approval_process,
                    type: :entity
                  }
                }
+             },
+             create_approved_candidate: %SeedFactory.Command{
+               name: :create_approved_candidate,
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{
+                   entity: :candidate_profile,
+                   from: :candidate_profile
+                 },
+                 %SeedFactory.ProducingInstruction{
+                   entity: :approved_candidate,
+                   from: :approved_candidate
+                 }
+               ],
+               updating_instructions: [],
+               deleting_instructions: [],
+               required_entities: MapSet.new([]),
+               resolve: &SchemaExample.resolve_0_generated_0F1CC00F8E5832040B3E1B4FA6A7E51C/1,
+               params: %{}
+             },
+             start_approval_process: %SeedFactory.Command{
+               name: :start_approval_process,
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{
+                   entity: :approval_process,
+                   from: :approval_process
+                 },
+                 %SeedFactory.ProducingInstruction{
+                   entity: :candidate_profile,
+                   from: :candidate_profile
+                 }
+               ],
+               updating_instructions: [],
+               deleting_instructions: [],
+               required_entities: MapSet.new([]),
+               resolve: &SchemaExample.resolve_0_generated_86B0C81BA0A9364904E482412A0F7100/1,
+               params: %{}
              }
            }
   end

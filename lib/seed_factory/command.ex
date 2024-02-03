@@ -1,12 +1,13 @@
 defmodule SeedFactory.Command do
   @moduledoc false
-  @derive {Inspect, only: []}
+  # @derive {Inspect, only: []}
 
   defstruct [
     :name,
     :producing_instructions,
     :updating_instructions,
     :deleting_instructions,
+    :required_entities,
     :resolve,
     :params
   ]
@@ -29,8 +30,34 @@ defmodule SeedFactory.Command do
   def transform(command) do
     ensure_instructions_present!(command)
     ensure_instructions_are_unique_per_entity!(command)
-    command = Map.update!(command, :params, &SeedFactory.Params.index_by_name/1)
+    params = SeedFactory.Params.index_by_name(command.params)
+
+    command = %{
+      command
+      | required_entities: required_entities_from_params(params, MapSet.new()),
+        params: params
+    }
+
     {:ok, command}
+  end
+
+  defp required_entities_from_params(params, acc) do
+    Enum.reduce(params, acc, fn
+      {_key, parameter}, acc ->
+        case parameter.type do
+          :generator ->
+            acc
+
+          :value ->
+            acc
+
+          :container ->
+            required_entities_from_params(parameter.params, acc)
+
+          :entity ->
+            MapSet.put(acc, parameter.entity)
+        end
+    end)
   end
 
   defp ensure_instructions_present!(command) do
