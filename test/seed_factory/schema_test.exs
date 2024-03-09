@@ -1101,5 +1101,26 @@ defmodule SeedFactory.SchemaTest do
         end
       )
     end
+
+    test "with_traits specified for parameter with type which is not :entity" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.SchemaTest.MySchema18]
+         root -> param -> author:
+          :with_traits option can be used only if entity is specified
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema18 do
+            use SeedFactory.Schema
+            command :create_project do
+              param :author, with_traits: [:active]
+              resolve(fn _ -> {:ok, %{}} end)
+            end
+          end
+        end
+      )
+    end
   end
 end
