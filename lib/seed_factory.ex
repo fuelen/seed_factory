@@ -1007,8 +1007,8 @@ defmodule SeedFactory do
       # produce multiple users using a sequence of `exec` calls, you have to write this:
       %{user1: user1, user2: user2} =
         context
-        |> rebind([user: :user1, profile: :profile1], &exec(:create_user, role: :admin))
-        |> rebind([user: :user2, profile: :profile2], &exec(:create_user, role: :admin))
+        |> rebind([user: :user1, profile: :profile1], &exec(&1, :create_user, role: :admin))
+        |> rebind([user: :user2, profile: :profile2], &exec(&1, :create_user, role: :admin))
 
       # The code above is a bit wordy in a case when all we need are :user entities. We have to write
       # rebinding for :profile even though we are't interested in it.
