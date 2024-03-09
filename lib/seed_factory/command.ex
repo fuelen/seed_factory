@@ -28,6 +28,7 @@ defmodule SeedFactory.Command do
   def schema, do: @schema
 
   def transform(command) do
+    ensure_name_is_not_nil!(command)
     ensure_instructions_present!(command)
     ensure_instructions_are_unique_per_entity!(command)
     params = SeedFactory.Params.index_by_name(command.params)
@@ -58,6 +59,15 @@ defmodule SeedFactory.Command do
             MapSet.put(acc, parameter.entity)
         end
     end)
+  end
+
+  defp ensure_name_is_not_nil!(command) do
+    if is_nil(command.name) do
+      raise Spark.Error.DslError,
+        module: __MODULE__,
+        path: [:root, :command, "nil"],
+        message: "name of the command cannot be nil"
+    end
   end
 
   defp ensure_instructions_present!(command) do

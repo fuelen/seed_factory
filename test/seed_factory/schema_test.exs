@@ -1081,5 +1081,25 @@ defmodule SeedFactory.SchemaTest do
         end
       )
     end
+
+    test "don't allow `nil` command name" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.Command]
+         root -> command -> nil:
+          name of the command cannot be nil
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema17 do
+            use SeedFactory.Schema
+            command nil do
+              resolve(fn _ -> {:ok, %{}} end)
+            end
+          end
+        end
+      )
+    end
   end
 end
