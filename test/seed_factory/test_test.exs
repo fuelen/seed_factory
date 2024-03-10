@@ -31,4 +31,21 @@ defmodule SeedFactory.TestTest do
       assert Map.has_key?(context, :virtual_file)
     end
   end
+
+  test "call produce/1 in runtime" do
+    assert_raise(
+      ArgumentError,
+      "produce/1 cannot be called in runtime, probably you forgot to pass context as an argument",
+      fn ->
+        defmodule MyTest do
+          use ExUnit.Case, async: true
+          use SeedFactory.Test, schema: SchemaExample
+
+          test "test" do
+            produce :org
+          end
+        end
+      end
+    )
+  end
 end

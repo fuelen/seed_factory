@@ -75,6 +75,12 @@ defmodule SeedFactory.Test do
             ]
         ) :: Macro.t()
   defmacro produce(data) do
+    if __CALLER__.function != nil do
+      raise ArgumentError,
+        message:
+          "produce/1 cannot be called in runtime, probably you forgot to pass context as an argument"
+    end
+
     quote bind_quoted: [data: data] do
       setup context do
         produce(context, unquote(data))

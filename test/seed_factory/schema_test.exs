@@ -1094,6 +1094,7 @@ defmodule SeedFactory.SchemaTest do
         fn ->
           defmodule MySchema17 do
             use SeedFactory.Schema
+
             command nil do
               resolve(fn _ -> {:ok, %{}} end)
             end
@@ -1114,6 +1115,7 @@ defmodule SeedFactory.SchemaTest do
         fn ->
           defmodule MySchema18 do
             use SeedFactory.Schema
+
             command :create_project do
               param :author, with_traits: [:active]
               resolve(fn _ -> {:ok, %{}} end)
