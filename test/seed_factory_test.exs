@@ -29,6 +29,14 @@ defmodule SeedFactoryTest do
     assert context.profile1.name == "John Doe"
   end
 
+  test "rebind unknown entity", context do
+    assert_raise ArgumentError, "Unknown entity :ofice", fn ->
+      rebind(context, [ofice: :office1], fn context ->
+        exec(context, :create_office, name: "My Office #1")
+      end)
+    end
+  end
+
   describe "nested rebinding" do
     test "rebind + produce", context do
       {context, diff} =

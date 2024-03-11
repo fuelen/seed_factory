@@ -240,6 +240,19 @@ defmodule SeedFactory do
   """
   @spec rebind(context(), [rebinding_rule()], (context() -> context())) :: context()
   def rebind(context, rebinding, callback) when is_function(callback, 1) do
+    ensure_entities_exist_in_rebinding_rules!(context.__seed_factory_meta__.entities, rebinding)
+    do_rebind(context, rebinding, callback)
+  end
+
+  defp ensure_entities_exist_in_rebinding_rules!(entities, rebinding) do
+    for {entity_name, _rebind_as} <- rebinding do
+      if not Map.has_key?(entities, entity_name) do
+        raise ArgumentError, "Unknown entity #{inspect(entity_name)}"
+      end
+    end
+  end
+
+  defp do_rebind(context, rebinding, callback) do
     case rebinding do
       [] ->
         callback.(context)
@@ -300,7 +313,7 @@ defmodule SeedFactory do
   def produce(context, entities_and_rebinding) when is_list(entities_and_rebinding) do
     {entities_with_trait_names, rebinding} = split_entities_and_rebinding(entities_and_rebinding)
 
-    rebind(context, rebinding, fn context ->
+    do_rebind(context, rebinding, fn context ->
       requirements =
         init_requirements()
         |> collect_requirements_for_entities_with_trait_names(
@@ -344,7 +357,7 @@ defmodule SeedFactory do
   def pre_produce(context, entities_and_rebinding) when is_list(entities_and_rebinding) do
     {entities_with_trait_names, rebinding} = split_entities_and_rebinding(entities_and_rebinding)
 
-    rebind(context, rebinding, fn context ->
+    do_rebind(context, rebinding, fn context ->
       requirements =
         init_requirements()
         |> collect_requirements_for_entities_with_trait_names(
