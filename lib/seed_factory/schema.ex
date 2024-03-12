@@ -5,15 +5,17 @@ defmodule SeedFactory.Schema do
   This module provides a DSL for defining schemas that describe how entities should be
   created, updated, or deleted within a context using the `SeedFactory` library.
 
-  In order to use the DSL, add the following line to your module:
+  In order to use the DSL, create a schema module with the following content:
 
-      use SeedFactory.Schema
+      defmodule MyApp.SeedFactorySchema do
+        use SeedFactory.Schema
+      end
 
   ## Command Definition
 
   Command is the first thing that should be defined in the schema.
   To define a command, use the `command` macro followed by the command name. Inside the command block,
-  you can define various parameters, a resolution, and produce, update, and delete directives.
+  you can define input parameters, a resolution, and produce, update, and delete directives.
 
   ```elixir
   command :create_user do
@@ -34,8 +36,6 @@ defmodule SeedFactory.Schema do
   * `:with_traits` - a list of atoms with trait names. Can be applied only if `:entity` option is present.
   * `:map` - an anonymous function that allows mapping an entity to another value. Can be applied only if `:entity` option is present.
 
-  One of these options should always be specified: `:value`, `:generate`, `:entity`.
-
   ```elixir
   param :address do
     param :city, value: "Lemberg"
@@ -44,6 +44,10 @@ defmodule SeedFactory.Schema do
 
   param :paid_by, entity: :user, with_traits: [:active]
   param :office_id, entity: :office, map: & &1.id
+
+  param :github_username
+  # the line above is equivalent to
+  # param :github_username, value: nil
   ```
 
   ## Resolution
@@ -54,7 +58,7 @@ defmodule SeedFactory.Schema do
   It should return `{:ok, map}`, where map keys are atoms and values represent entities.
   The atom keys will be used by the `:from` option in `produce` and `update` directives.
 
-  `{:error, reason}` will raise an exception.
+  `{:error, reason}` will abort the command execution by raising an exception.
 
   ```elixir
   resolve(fn args ->
@@ -112,10 +116,13 @@ defmodule SeedFactory.Schema do
   The `delete` directive removes an entity from the context.
 
   ```elixir
-  delete :entity_name
-  ```
+  resolve(fn args ->
+    MyApp.delete_user!(args.user_id)
+    {:ok, %{}}
+  end)
 
-  It is used to delete an entity from the context.
+  delete :user
+  ```
 
   ## Traits
 
@@ -222,7 +229,10 @@ defmodule SeedFactory.Schema do
   It is possible to include multiple schemas into a new schema in order to reuse everything that is declared in specified modules.
 
   ```elixir
-  include_schema MyApp.SeedFactorySchema
+  defmodule MyAppWeb.SeedFactorySchema do
+    use SeedFactory.Schema
+    include_schema MyApp.SeedFactorySchema
+  end
   ```
   """
   use Spark.Dsl, default_extensions: [extensions: SeedFactory.DSL]

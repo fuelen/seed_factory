@@ -1010,7 +1010,7 @@ defmodule SeedFactory do
   end
 
   @doc """
-  Creates dependencies needed to execute the command.
+  Creates dependent entities needed for command execution.
 
   This is useful, when you're interested in side effects and you want to execute the command multiple times with the same input entities.
 
