@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/fuelen/seed_factory/actions/workflows/elixir.yml/badge.svg)](https://github.com/fuelen/seed_factory/actions/workflows/elixir.yml)
 [![Hex.pm](https://img.shields.io/hexpm/v/seed_factory.svg)](https://hex.pm/packages/seed_factory)
+[![Coverage Status](https://coveralls.io/repos/github/fuelen/seed_factory/badge.svg?branch=main)](https://coveralls.io/github/fuelen/seed_factory?branch=main)
 
 A utility for producing entities using business logic defined by your application.
 

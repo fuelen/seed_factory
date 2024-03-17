@@ -18,7 +18,7 @@ defmodule SeedFactory.MixProject do
         source_ref: "v#{@version}"
       ],
       test_coverage: [
-        ignore_modules: [~r/^SeedFactory\.DSL\.Root/, ~r/^Inspect\./]
+        tool: ExCoveralls
       ]
     ]
   end
@@ -44,6 +44,7 @@ defmodule SeedFactory.MixProject do
     [
       {:spark, "~> 1.1"},
       {:libgraph, "~> 0.16"},
+      {:excoveralls, "~> 0.10", only: :test},
       {:ex_doc, "~> 0.27", only: :dev, runtime: false}
     ]
   end
