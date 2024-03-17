@@ -1,5 +1,7 @@
 # SeedFactory
 
+[![CI](https://github.com/fuelen/seed_factory/actions/workflows/elixir.yml/badge.svg)](https://github.com/fuelen/seed_factory/actions/workflows/elixir.yml)
+
 A utility for producing entities using business logic defined by your application.
 
 The main idea of `SeedFactory` is to produce entities in tests according to your application business logic (read as context functions if you use https://hexdocs.pm/phoenix/contexts.html) whenever it is possible and avoid direct inserts to the database (opposed to `ex_machina`).
