@@ -25,8 +25,7 @@ defmodule SeedFactory.MixProject do
 
   defp package do
     [
-      description:
-        "A utility for producing entities using business logic defined by your application.",
+      description: "A toolkit for test data generation.",
       licenses: ["Apache-2.0"],
       links: %{
         GitHub: @source_url

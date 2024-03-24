@@ -1,15 +1,16 @@
 defmodule SeedFactory do
   @moduledoc """
-  A utility for producing entities using business logic defined by your application.
+  A toolkit for test data generation.
 
-  The main idea of `SeedFactory` is to produce entities in tests according to your application business logic (read as context functions if you use https://hexdocs.pm/phoenix/contexts.html)
-  whenever it is possible and avoid direct inserts to the database (opposed to [`ex_machina`](https://hex.pm/packages/ex_machina)).
-  This approach allows to minimize testing of invalid states as you're not forced to keep complex database structure in your head in order to prepare test data.
+  The main idea of `SeedFactory` is to generate data in tests according to your application business logic (read as
+  context functions if you use [Phoenix Contexts](https://hexdocs.pm/phoenix/contexts.html)) whenever it is possible
+  and avoid direct inserts to the database (as opposed to `ex_machina`).
+  This approach allows you to minimize testing of invalid states as you're not forced to keep complex database structure in your head in order to prepare test data.
+  The library is completely agnostic to the database toolkit.
 
   **Context**, **entities** and **commands** are the core concepts of the library.
 
-  Context is a map which can be populated with entities using commands.
-  Entities can be any type and you're not strictly tied to structs defined by [`ecto`](https://hex.pm/packages/ecto).
+  Context is a `t:map/0` which can be populated with entities using commands.
 
   The schema with instructions on how commands modify context is described using DSL with the help of `SeedFactory.Schema` module.
 
@@ -91,12 +92,13 @@ defmodule SeedFactory do
   There is a third command which only updates the `:user` entity.
   There are 4 traits defined for the `:user` entity.
 
-  In order to start using the schema, put metadata about it to the context using `init/2` function:
+  To start using the schema, put metadata about it to the context using `init/2` function:
   ```elixir
   context = %{}
   context = init(context, MyApp.SeedFactorySchema)
   ```
-  If you use `SeedFactory` in tests, use `SeedFactory.Test` helper module instead, it automatically does initialization using `setup_all` callback.
+  If you use `SeedFactory` in tests with `ExUnit`, check out `SeedFactory.Test`. This module adds initialization using `ExUnit.Callbacks.setup_all/2` callback
+  and imports functions.
 
   Now, `exec/2` function can be used to execute a command:
   ```elixir
@@ -108,14 +110,14 @@ defmodule SeedFactory do
   context = exec(context, :create_company, name: "GitHub")
   ```
 
-  Because exec function returns `t:context/0`, it is convenient to chain `exec` calls with pipe operator:
+  Because exec function returns `t:context/0`, it is convenient to chain `exec` calls with the pipe operator:
   ```elixir
   context =
     context
     |> exec(:create_company)
     |> exec(:create_user, name: "John Doe")
   ```
-  In order to get a value for the `:command` parameter of the `:create_user` command, the corresponding entity was taken from the context.
+  In order to get a value for the `:company` parameter of the `:create_user` command, the corresponding entity was taken from the context.
   However, it is not necessary to do so, as `SeedFactory` can automatically execute commands which produce dependent entities.
   The code above has the same effect as a single call to `:create_user` command:
   ```elixir
@@ -139,7 +141,7 @@ defmodule SeedFactory do
   > %{user: user, profile: profile} = produce(contex, [:user, :profile])
   >
   > # good
-  > %{user: user, profile: profile, company: company} = produce(contex, [:user, :profile, :company])
+  > %{user: user, company: company} = produce(contex, [:user, :company])
   >
   > # bad
   > %{user: user, profile: profile, company: company} = produce(contex, :user)
@@ -153,7 +155,7 @@ defmodule SeedFactory do
     |> rebind([user: :user1, profile: :profile1], &exec(&1, :create_user))
     |> rebind([user: :user2, profile: :profile2], &exec(&1, :create_user))
   ```
-  The snippet above puts the following keys to the context: `:company`, `:user1`, `:profile1`, `:user2`, `:profile2`.
+  The snippet above puts the following keys to the context: `:company`, `:user1`, `:profile1`, `:user2` and `:profile2`.
   The `:company` is shared in this case, so two users have different profiles and belong to the same company.
   A shorter counterpart using `produce/2` is the following:
   ```elixir
@@ -284,21 +286,30 @@ defmodule SeedFactory do
   end
 
   @doc """
-  Produces entities by executing corresponding commands.
+  Produces entities if they don't exist in the context.
 
+  The order of specified entities doesn't matter.
+
+  It invokes a series of commands to produce entities with specified traits.
   If the same entity can be produced by multiple commands, then the first declared command is used by default.
   In order to produce the entity using the rest of the commands use traits or `exec/3` explicitly.
 
   ## Examples
 
+      # specify a single entity
       %{user: _} = produce(context, :user)
 
+      # specify a list of entitities
       %{user: _, company: _} = produce(context, [:user, :company])
 
+      # rebind :user entity as :user1
       %{user1: _} = produce(context, user: :user1)
 
+      # specify traits
       %{user: _} = produce(context, user: [:active, :admin])
+      %{user: _} = context |> produce(user: [:pending, :admin]) |> produce(user: [:active])
 
+      # specify traits and :as option
       %{user1: _} = produce(context, user: [:active, :admin, as: :user1])
   """
   @spec produce(
@@ -977,7 +988,7 @@ defmodule SeedFactory do
   end
 
   @doc """
-  Executes a command and puts its result to the `context`.
+  Executes a command and updates the `context` according to the schema.
 
   ## Example
 
@@ -1012,7 +1023,7 @@ defmodule SeedFactory do
   @doc """
   Creates dependent entities needed for command execution.
 
-  This is useful, when you're interested in side effects and you want to execute the command multiple times with the same input entities.
+  This is useful, when you want to execute the command multiple times reusing input entities.
 
   ## Example
 

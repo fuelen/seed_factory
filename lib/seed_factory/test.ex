@@ -36,7 +36,7 @@ defmodule SeedFactory.Test do
   @doc """
   A macro that implicitly passes `context` and allows usage of `SeedFactory.produce/2` outside the `test` block.
 
-  Basically, it creates a `setup` block and calls `SeedFactory.produce/2` inside.
+  Basically, it creates a `ExUnit.Callbacks.setup/2` block and calls `SeedFactory.produce/2` inside.
 
   ## Examples
 
