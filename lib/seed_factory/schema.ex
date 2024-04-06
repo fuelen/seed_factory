@@ -181,7 +181,7 @@ defmodule SeedFactory.Schema do
   If specified, then entity will be marked with the trait only when command args match the pattern. Also, the pattern will be used as a replacement to `:generate_args` invocation.
 
   ```elixir
-  # all three instuction below are equal
+  # all three instructions below are equal
   exec :create_user
   exec :create_user, args_pattern: %{}
   exec :create_user, generate_args: fn -> %{} end, args_match: fn _args -> true end
