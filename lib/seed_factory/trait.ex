@@ -19,8 +19,8 @@ defmodule SeedFactory.Trait do
       doc: "A name of the entity"
     ],
     from: [
-      type: :atom,
-      doc: "A name of the trait that should be replaced by the new one"
+      type: {:or, [:atom, {:list, :atom}]},
+      doc: "A name of the trait or list of the traits that should be replaced by the new trait"
     ]
   ]
 

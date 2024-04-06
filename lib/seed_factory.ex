@@ -510,13 +510,21 @@ defmodule SeedFactory do
                     %{hd(fetch_command_names_by_entity_name!(context, entity_name)) => %{}}
                   else
                     current_trait_names
-                    |> select_traits_with_dependencies_by_names(trait_by_name, entity_name)
+                    |> select_traits_with_dependencies_by_names(
+                      trait_by_name,
+                      entity_name,
+                      context.__seed_factory_meta__.trails[entity_name]
+                    )
                     |> ensure_no_restrictions!(restrictions, entity_name, :current)
                     |> executed_commands_from_traits()
                   end
 
                 absent_trait_names
-                |> select_traits_with_dependencies_by_names(trait_by_name, entity_name)
+                |> select_traits_with_dependencies_by_names(
+                  trait_by_name,
+                  entity_name,
+                  context.__seed_factory_meta__.trails[entity_name]
+                )
                 |> Enum.group_by(& &1.exec_step.command_name)
                 |> Enum.reduce(acc, fn {command_name, traits},
                                        {requirements, command_names} = acc ->
@@ -582,7 +590,11 @@ defmodule SeedFactory do
 
               {acc, _} =
                 trait_names
-                |> select_traits_with_dependencies_by_names(trait_by_name, entity_name)
+                |> select_traits_with_dependencies_by_names(
+                  trait_by_name,
+                  entity_name,
+                  context.__seed_factory_meta__.trails[entity_name]
+                )
                 |> ensure_no_restrictions!(restrictions, entity_name, :new)
                 |> Enum.reduce({acc, nil}, fn trait,
                                               {{requirements, command_names},
@@ -935,11 +947,11 @@ defmodule SeedFactory do
     |> Map.new(fn {command_name, traits} -> {command_name, squash_args(traits)} end)
   end
 
-  defp select_traits_with_dependencies_by_names(trait_names, trait_by_name, entity_name) do
+  defp select_traits_with_dependencies_by_names(trait_names, trait_by_name, entity_name, trail) do
     Enum.flat_map(trait_names, fn trait_name ->
       case Map.fetch(trait_by_name, trait_name) do
         {:ok, trait} ->
-          resolve_trait_depedencies(trait, trait_by_name)
+          resolve_trait_depedencies(trait, trait_by_name, trail)
 
         :error ->
           raise ArgumentError,
@@ -981,10 +993,35 @@ defmodule SeedFactory do
     end)
   end
 
-  defp resolve_trait_depedencies(%{from: nil} = trait, _trait_by_name), do: [trait]
+  defp resolve_trait_depedencies(trait, trait_by_name, trail) do
+    case trait.from do
+      nil ->
+        [trait]
 
-  defp resolve_trait_depedencies(trait, trait_by_name) do
-    [trait | resolve_trait_depedencies(trait_by_name[trait.from], trait_by_name)]
+      from when is_atom(from) ->
+        from_trait = trait_by_name[from]
+        [trait | resolve_trait_depedencies(from_trait, trait_by_name, trail)]
+
+      from_any_of when is_list(from_any_of) ->
+        from_trait =
+          case trail do
+            nil ->
+              trait_by_name[hd(from_any_of)]
+
+            trail ->
+              trait_by_command_name =
+                Map.new(from_any_of, fn from ->
+                  from_trait = trait_by_name[from]
+                  {from_trait.exec_step.command_name, from_trait}
+                end)
+
+              Enum.find_value(trail.updated_by, fn command_name ->
+                trait_by_command_name[command_name]
+              end) || trait_by_command_name[trail.produced_by]
+          end
+
+        [trait | resolve_trait_depedencies(from_trait, trait_by_name, trail)]
+    end
   end
 
   @doc """
@@ -1013,6 +1050,7 @@ defmodule SeedFactory do
         |> exec_producing_instructions(command, resolver_output)
         |> exec_updating_instructions(command, resolver_output)
         |> exec_deleting_instructions(command)
+        |> store_trails(command)
         |> sync_current_traits(command, args)
 
       {:error, error} ->
@@ -1294,41 +1332,69 @@ defmodule SeedFactory do
     |> Graph.topsort()
   end
 
+  defp store_trails(context, command) do
+    context =
+      Enum.reduce(command.producing_instructions, context, fn instruction, context ->
+        binding_name = binding_name(context, instruction.entity)
+
+        trail = SeedFactory.Trail.new(command.name)
+        update_meta(context, :trails, &Map.put(&1, binding_name, trail))
+      end)
+
+    context =
+      Enum.reduce(command.updating_instructions, context, fn instruction, context ->
+        binding_name = binding_name(context, instruction.entity)
+
+        update_meta(context, :trails, fn trails ->
+          Map.update!(trails, binding_name, &SeedFactory.Trail.add_updated_by(&1, command.name))
+        end)
+      end)
+
+    case command.deleting_instructions do
+      [] ->
+        context
+
+      deleting_instructions ->
+        binding_names = Enum.map(deleting_instructions, &binding_name(context, &1.entity))
+
+        update_meta(context, :trails, &Map.drop(&1, binding_names))
+    end
+  end
+
   defp sync_current_traits(context, command, args) do
-    (command.producing_instructions ++ command.updating_instructions)
-    |> Enum.reduce(
-      context,
-      fn %{entity: entity}, context ->
-        case context.__seed_factory_meta__.traits[entity][:by_command_name][command.name] do
-          nil ->
-            context
+    traits_diff =
+      Enum.flat_map(
+        command.producing_instructions ++ command.updating_instructions,
+        fn %{entity: entity} ->
+          case context.__seed_factory_meta__.traits[entity][:by_command_name][command.name] do
+            nil ->
+              []
 
-          possible_traits ->
-            binding_name = binding_name(context, entity)
-            current_trait_names = current_trait_names(context, binding_name)
+            possible_traits ->
+              binding_name = binding_name(context, entity)
 
-            {remove, add} =
-              Enum.reduce(possible_traits, {[], []}, fn trait, {remove, add} = acc ->
-                args_match? = args_match?(trait, args)
-
-                cond do
-                  args_match? and is_nil(trait.from) ->
-                    {remove, [trait.name | add]}
-
-                  args_match? and trait.from in current_trait_names ->
-                    {[trait.from | remove], [trait.name | add]}
-
-                  true ->
+              diff =
+                Enum.reduce(possible_traits, {[], []}, fn trait, {remove, add} = acc ->
+                  if args_match?(trait, args) do
+                    {List.wrap(trait.from) ++ remove, [trait.name | add]}
+                  else
                     acc
-                end
-              end)
+                  end
+                end)
 
-            new_trait_names = (current_trait_names -- remove) ++ add
-
-            update_meta(context, :current_traits, &Map.put(&1, binding_name, new_trait_names))
+              [{binding_name, diff}]
+          end
         end
-      end
-    )
+      )
+
+    context
+    |> update_meta(:current_traits, fn current_traits ->
+      Enum.reduce(traits_diff, current_traits, fn {binding_name, {remove, add}}, current_traits ->
+        current_trait_names = current_traits[binding_name] || []
+        new_trait_names = (current_trait_names -- remove) ++ add
+        Map.put(current_traits, binding_name, new_trait_names)
+      end)
+    end)
     |> delete_from_current_traits(command.deleting_instructions)
   end
 
@@ -1498,7 +1564,8 @@ defmodule SeedFactory do
             select_traits_with_dependencies_by_names(
               trait_names,
               trait_by_name,
-              entity_name
+              entity_name,
+              context.__seed_factory_meta__.trails[entity_name]
             )
         end)
     }

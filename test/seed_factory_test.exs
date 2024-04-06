@@ -511,6 +511,24 @@ defmodule SeedFactoryTest do
   end
 
   describe "traits" do
+    test "replacing traits when `from` in schema is specified as a list", context do
+      context
+      |> produce(task: [:completed])
+      |> assert_trait(:task, [:completed])
+
+      context
+      |> produce(task: [:todo])
+      |> assert_trait(:task, [:todo])
+      |> produce(task: [:completed])
+      |> assert_trait(:task, [:completed])
+
+      context
+      |> produce(task: [:in_progress])
+      |> assert_trait(:task, [:in_progress])
+      |> produce(task: [:completed])
+      |> assert_trait(:task, [:completed])
+    end
+
     test "automatic detection of traits from params", context do
       context
       |> exec(:create_user, role: :admin)

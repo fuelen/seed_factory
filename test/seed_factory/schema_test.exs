@@ -22,7 +22,8 @@ defmodule SeedFactory.SchemaTest do
     ],
     approval_process: [:start_approval_process],
     approved_candidate: [:approve_candidate, :create_approved_candidate],
-    candidate_profile: [:start_approval_process, :create_approved_candidate]
+    candidate_profile: [:start_approval_process, :create_approved_candidate],
+    task: [:create_task]
   }
 
   test 'SchemaExampleExtended - persisted data' do
@@ -688,6 +689,73 @@ defmodule SeedFactory.SchemaTest do
                required_entities: MapSet.new([]),
                resolve: &SchemaExample.resolve_0_generated_86B0C81BA0A9364904E482412A0F7100/1,
                params: %{}
+             },
+             complete_task: %SeedFactory.Command{
+               name: :complete_task,
+               producing_instructions: [],
+               updating_instructions: [
+                 %SeedFactory.UpdatingInstruction{entity: :task, from: :task}
+               ],
+               deleting_instructions: [],
+               required_entities: MapSet.new([:task]),
+               resolve: &SchemaExample.resolve_0_generated_333B70627DFFACAE0A6BD073F2C4E675/1,
+               params: %{
+                 task: %SeedFactory.Parameter{
+                   name: :task,
+                   params: %{},
+                   map: nil,
+                   with_traits: nil,
+                   value: nil,
+                   generate: nil,
+                   entity: :task,
+                   type: :entity
+                 }
+               }
+             },
+             create_task: %SeedFactory.Command{
+               name: :create_task,
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{entity: :task, from: :task}
+               ],
+               updating_instructions: [],
+               deleting_instructions: [],
+               required_entities: MapSet.new([]),
+               resolve: &SchemaExample.resolve_0_generated_CB186AB1A0681BBD7B002CBA64D8C32A/1,
+               params: %{
+                 text: %SeedFactory.Parameter{
+                   name: :text,
+                   params: %{},
+                   map: nil,
+                   with_traits: nil,
+                   value: nil,
+                   generate:
+                     &SchemaExample.generate_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                   entity: nil,
+                   type: :generator
+                 }
+               }
+             },
+             move_task_to_in_progress: %SeedFactory.Command{
+               name: :move_task_to_in_progress,
+               producing_instructions: [],
+               updating_instructions: [
+                 %SeedFactory.UpdatingInstruction{entity: :task, from: :task}
+               ],
+               deleting_instructions: [],
+               required_entities: MapSet.new([:task]),
+               resolve: &SchemaExample.resolve_0_generated_4AC1432886D0A16759B86DE57D2DDAEA/1,
+               params: %{
+                 task: %SeedFactory.Parameter{
+                   name: :task,
+                   params: %{},
+                   map: nil,
+                   with_traits: nil,
+                   value: nil,
+                   generate: nil,
+                   entity: :task,
+                   type: :entity
+                 }
+               }
              }
            }
   end

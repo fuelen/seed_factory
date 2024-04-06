@@ -437,4 +437,48 @@ defmodule SchemaExample do
   trait :approved_using_approval_process, :approved_candidate do
     exec :approve_candidate
   end
+
+  command :create_task do
+    param :text, generate: &random_string/0
+
+    resolve(fn args ->
+      {:ok, %{task: %{text: args.text, status: :todo}}}
+    end)
+
+    produce :task
+  end
+
+  command :move_task_to_in_progress do
+    param :task, entity: :task
+
+    resolve(fn args ->
+      {:ok, %{task: %{args.task | status: :in_progress}}}
+    end)
+
+    update :task
+  end
+
+  command :complete_task do
+    param :task, entity: :task
+
+    resolve(fn args ->
+      {:ok, %{task: %{args.task | status: :completed}}}
+    end)
+
+    update :task
+  end
+
+  trait :todo, :task do
+    exec :create_task
+  end
+
+  trait :in_progress, :task do
+    from :todo
+    exec :move_task_to_in_progress
+  end
+
+  trait :completed, :task do
+    from [:todo, :in_progress]
+    exec :complete_task
+  end
 end

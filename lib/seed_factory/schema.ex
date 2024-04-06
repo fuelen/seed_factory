@@ -134,7 +134,7 @@ defmodule SeedFactory.Schema do
 
   ### Options
 
-  * `:from` - an atom that points to the trait that should be replaced with the new one. This is useful for different kinds of
+  * `:from` - an atom or a list of atoms that point to the traits that should be replaced with the new one. This is useful for different kinds of
   status transitions.
 
 
@@ -142,13 +142,28 @@ defmodule SeedFactory.Schema do
   trait :pending, :user do
     exec :create_user
   end
-  ```
 
-  ```elixir
   trait :active, :user do
     from :pending
     exec :activate_user
   end
+
+  trait :suspended, :user do
+    from [:pending, :active]
+    exec :suspend_user
+  end
+
+  # execute :create_user command
+  produce(ctx, user: [:pending])
+
+  # execute :create_user -> :activate_user
+  produce(ctx, user: [:active])
+
+  # execute :create_user -> :suspend_user
+  produce(ctx, user: [:suspended])
+
+  # execute :create_user -> :activate_user -> :suspend_user
+  ctx |> produce(user: [:active]) |> produce(user: [:suspended])
   ```
 
   ## Exec step

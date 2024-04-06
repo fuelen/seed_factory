@@ -1,12 +1,13 @@
 defmodule SeedFactory.Meta do
   @moduledoc false
-  @derive {Inspect, only: [:entities_rebinding, :current_traits]}
+  @derive {Inspect, only: [:entities_rebinding, :current_traits, :trails]}
   defstruct [
     :entities_rebinding,
     :entities,
     :commands,
     :traits,
     :current_traits,
+    :trails,
     :create_dependent_entities?
   ]
 
@@ -14,6 +15,7 @@ defmodule SeedFactory.Meta do
     %__MODULE__{
       entities_rebinding: %{},
       current_traits: %{},
+      trails: %{},
       create_dependent_entities?: true,
       traits: Spark.Dsl.Extension.get_persisted(schema, :traits),
       entities: Spark.Dsl.Extension.get_persisted(schema, :entities),
