@@ -734,6 +734,10 @@ defmodule SeedFactoryTest do
       context
       |> produce(project: [:expired])
       |> assert_trait(:project, [:expired])
+
+      context
+      |> produce(project: [:expired, :archived])
+      |> assert_trait(:project, [:expired, :archived])
     end
 
     test "entity doesn't have traits", context do

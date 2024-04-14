@@ -19,7 +19,8 @@ defmodule SchemaExample do
       :published_by_id,
       :virtual_files,
       :expiry_date,
-      :start_date
+      :start_date,
+      :archived?
     ]
   end
 
@@ -144,7 +145,7 @@ defmodule SchemaExample do
     param :project, entity: :draft_project
     param :published_by, entity: :user, with_traits: [:active]
     param :start_date, generate: fn -> Date.utc_today() end
-    param :expiry_date, generate: fn -> Date.utc_today() |> Date.add(21) end
+    param :expiry_date, generate: fn -> Date.utc_today() |> Date.add(Enum.random(1..21)) end
 
     resolve(fn args ->
       {:ok,
@@ -154,7 +155,8 @@ defmodule SchemaExample do
            | draft?: false,
              published_by_id: args.published_by.id,
              start_date: args.start_date,
-             expiry_date: args.expiry_date
+             expiry_date: args.expiry_date,
+             archived?: false
          },
          email: %Email{content: "Project has been published"}
        }}
@@ -262,6 +264,19 @@ defmodule SchemaExample do
     delete :user
   end
 
+  command :archive_project do
+    param :project, entity: :project
+
+    resolve(fn args ->
+      {:ok,
+       %{
+         project: %{args.project | archived?: true}
+       }}
+    end)
+
+    update :project
+  end
+
   command :create_virtual_file do
     param :content, generate: &random_string/0
     param :privacy, value: :private
@@ -284,6 +299,10 @@ defmodule SchemaExample do
 
     produce :virtual_file, from: :file
     update :project
+  end
+
+  trait :archived, :project do
+    exec :archive_project
   end
 
   trait :delivered, :email do
@@ -368,7 +387,7 @@ defmodule SchemaExample do
 
       generate_args(fn ->
         today = Date.utc_today()
-        %{start_date: today, expiry_date: Date.add(today, 21)}
+        %{start_date: today, expiry_date: Date.add(today, Enum.random(1..21))}
       end)
     end
   end
@@ -379,7 +398,11 @@ defmodule SchemaExample do
 
       generate_args(fn ->
         today = Date.utc_today()
-        %{start_date: Date.add(today, -22), expiry_date: Date.add(today, -1)}
+
+        %{
+          start_date: Date.add(today, -Enum.random(21..42)),
+          expiry_date: Date.add(today, -Enum.random(1..21))
+        }
       end)
     end
   end
