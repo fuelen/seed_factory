@@ -1000,9 +1000,14 @@ defmodule SeedFactory do
 
   defp deep_merge_maps!(map1, map2, path) do
     Map.merge(map1, map2, fn
-      key, v1, v2 when is_map(v1) and is_map(v2) -> deep_merge_maps!(v1, v2, path ++ [key])
-      _key, v, v -> v
-      key, v1, v2 -> throw({:conflict, v1, v2, path ++ [key]})
+      key, v1, v2 when is_map(v1) and is_map(v2) and not is_struct(v1) and not is_struct(v2) ->
+        deep_merge_maps!(v1, v2, path ++ [key])
+
+      _key, v, v ->
+        v
+
+      key, v1, v2 ->
+        throw({:conflict, v1, v2, path ++ [key]})
     end)
   end
 
@@ -1450,8 +1455,11 @@ defmodule SeedFactory do
   # checks whether all values from map1 are present in map2.
   defp deep_equal_maps?(map1, map2) do
     Enum.all?(map1, fn
-      {key, value} when is_map(value) -> deep_equal_maps?(value, map2[key])
-      {key, value} -> map2[key] == value
+      {key, value} when is_map(value) and not is_struct(value) ->
+        deep_equal_maps?(value, map2[key])
+
+      {key, value} ->
+        map2[key] == value
     end)
   end
 

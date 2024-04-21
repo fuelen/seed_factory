@@ -466,7 +466,7 @@ defmodule SeedFactory.SchemaTest do
                    params: %{},
                    type: :entity,
                    value: nil,
-                   with_traits: nil
+                   with_traits: [:not_expired]
                  }
                },
                producing_instructions: [

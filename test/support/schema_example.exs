@@ -280,7 +280,7 @@ defmodule SchemaExample do
   command :create_virtual_file do
     param :content, generate: &random_string/0
     param :privacy, value: :private
-    param :project, entity: :project
+    param :project, entity: :project, with_traits: [:not_expired]
     param :author, entity: :user, with_traits: [:active, :admin]
 
     resolve(fn args ->
@@ -400,8 +400,8 @@ defmodule SchemaExample do
         today = Date.utc_today()
 
         %{
-          start_date: Date.add(today, -Enum.random(21..42)),
-          expiry_date: Date.add(today, -Enum.random(1..21))
+          start_date: Date.add(today, Enum.random(-42..-21)),
+          expiry_date: Date.add(today, Enum.random(-21..-1))
         }
       end)
     end

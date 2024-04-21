@@ -419,6 +419,16 @@ defmodule SeedFactoryTest do
                    |> produce(:profile)
                    |> produce(profile: [:contacts_confirmed])
                  end
+
+    # comparison of structs doesn't fail with
+    # (Protocol.UndefinedError) protocol Enumerable not implemented for ~D[2024-04-28] of type Date (a struct)
+    assert_raise ArgumentError,
+                 ~r"Args to previously executed command :publish_project do not match",
+                 fn ->
+                   context
+                   |> produce(project: [:expired])
+                   |> produce(:virtual_file)
+                 end
   end
 
   test "entity can be produced by non-default command using traits",
