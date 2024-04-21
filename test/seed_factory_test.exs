@@ -782,6 +782,13 @@ defmodule SeedFactoryTest do
                      Value 2: :free
                    """,
                    fn -> produce(context, user: [:paid_plan, :free_plan]) end
+
+      assert_raise ArgumentError,
+                   ~r"""
+                   Cannot apply trait :not_expired of entity :project to generated args for command :publish_project.
+                   Generated args: %\{expiry_date:\ ~D\[.+\],\ start_date:\ ~D\[.+\]\}
+                   """,
+                   fn -> produce(context, [:virtual_file, project: [:expired]]) end
     end
 
     test "accumulate traits using update instruction", context do
