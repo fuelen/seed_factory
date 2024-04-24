@@ -9,6 +9,7 @@ defmodule SeedFactory.TrailTest do
       |> SeedFactory.Trail.add_updated_by(:update_profile)
       |> SeedFactory.Trail.add_updated_by(:suspend_user)
 
-    assert inspect(trail) == "#trail[:invite_user -> :accept_invitation -> :update_profile -> :suspend_user]"
+    assert inspect(trail) ==
+             "#trail[:invite_user -> :accept_invitation -> :update_profile -> :suspend_user]"
   end
 end

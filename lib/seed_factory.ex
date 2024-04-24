@@ -505,15 +505,22 @@ defmodule SeedFactory do
               else
                 %{by_name: trait_by_name} = fetch_traits!(context, entity_name)
 
+                trail =
+                  context.__seed_factory_meta__.trails[binding_name] ||
+                    raise """
+                    Can't find trail for #{inspect(binding_name)} entity.
+                    Please don't put entities that can have traits manually in the context.
+                    """
+
                 currently_executed =
                   if current_trait_names == [] do
-                    %{hd(fetch_command_names_by_entity_name!(context, entity_name)) => %{}}
+                    %{trail.produced_by => %{}}
                   else
                     current_trait_names
                     |> select_traits_with_dependencies_by_names(
                       trait_by_name,
                       entity_name,
-                      context.__seed_factory_meta__.trails[entity_name]
+                      trail
                     )
                     |> ensure_no_restrictions!(restrictions, entity_name, :current)
                     |> executed_commands_from_traits()

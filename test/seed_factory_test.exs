@@ -856,6 +856,32 @@ defmodule SeedFactoryTest do
     assert diff == %{added: [:org], deleted: [], updated: []}
   end
 
+  describe "manually put entities to context" do
+    test "entity that can have traits", context do
+      context = Map.put(context, :user, %SchemaExample.User{id: "user-id-1"})
+
+      assert_raise(
+        RuntimeError,
+        """
+        Can't find trail for :user entity.
+        Please don't put entities that can have traits manually in the context.
+        """,
+        fn -> exec(context, :publish_project) end
+      )
+    end
+
+    test "entity that cannot have traits", context do
+      context = Map.put(context, :org, %SchemaExample.Org{id: "org-id-1"})
+
+      {_context, diff} =
+        with_diff(context, fn ->
+          exec(context, :create_office)
+        end)
+
+      assert diff == %{added: [:office], deleted: [], updated: []}
+    end
+  end
+
   defp assert_trait(context, binding_name, expected_traits) when is_list(expected_traits) do
     assert Map.has_key?(context, binding_name),
            "No produced entity bound to #{inspect(binding_name)}"

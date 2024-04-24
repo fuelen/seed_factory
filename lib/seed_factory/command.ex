@@ -1,6 +1,6 @@
 defmodule SeedFactory.Command do
   @moduledoc false
-  @derive {Inspect, only: []}
+  @derive {Inspect, only: [:name]}
 
   defstruct [
     :name,
