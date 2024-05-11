@@ -284,5 +284,5 @@ defmodule SeedFactory.Schema do
   end
   ```
   """
-  use Spark.Dsl, default_extensions: [extensions: SeedFactory.DSL]
+  use Spark.Dsl, default_extensions: [extensions: SeedFactory.DSL], opts_to_document: []
 end

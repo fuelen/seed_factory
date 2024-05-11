@@ -426,7 +426,7 @@ defmodule SeedFactoryTest do
                  ~r"Args to previously executed command :publish_project do not match",
                  fn ->
                    context
-                   |> produce(project: [:expired])
+                   |> produce(project: [:expired], user: [:admin])
                    |> produce(:virtual_file)
                  end
   end
@@ -730,7 +730,10 @@ defmodule SeedFactoryTest do
       |> assert_trait(:project, [:not_expired])
 
       context
-      |> exec(:publish_project, expiry_date: Date.add(today, -1), start_date: Date.add(today, -22))
+      |> exec(:publish_project,
+        expiry_date: Date.add(today, -1),
+        start_date: Date.add(today, -22)
+      )
       |> assert_trait(:project, [:expired])
 
       context
@@ -905,6 +908,7 @@ defmodule SeedFactoryTest do
         context[element] == new_context[element]
       end)
 
-    {new_context, %{added: added, deleted: deleted, updated: updated}}
+    {new_context,
+     %{added: Enum.sort(added), deleted: Enum.sort(deleted), updated: Enum.sort(updated)}}
   end
 end

@@ -26,7 +26,7 @@ defmodule SeedFactory.SchemaTest do
     task: [:create_task]
   }
 
-  test 'SchemaExampleExtended - persisted data' do
+  test "SchemaExampleExtended - persisted data" do
     assert Spark.Dsl.Extension.get_persisted(SchemaExampleExtended, :entities) ==
              Map.merge(@schema_example_entities, %{conn: [:build_conn]})
   end
@@ -73,7 +73,7 @@ defmodule SeedFactory.SchemaTest do
                },
                producing_instructions: [],
                required_entities: MapSet.new([:user]),
-               resolve: &SchemaExample.resolve_0_generated_A318D00A9A01DC9FF758958FF2E3647B/1,
+               resolve: &SchemaExample.resolve_0_generated_C17C97BAADD6E3D44133EA735E723E9A/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
                ]
@@ -97,7 +97,7 @@ defmodule SeedFactory.SchemaTest do
                  %SeedFactory.ProducingInstruction{entity: :proposal, from: :proposal}
                ],
                required_entities: MapSet.new([:draft_project]),
-               resolve: &SchemaExample.resolve_0_generated_EC80F6FBDA51FD9974A16539E87B6B75/1,
+               resolve: &SchemaExample.resolve_0_generated_27304FE0319036410B6571AA890ED703/1,
                updating_instructions: []
              },
              add_proposal_v2: %SeedFactory.Command{
@@ -119,7 +119,7 @@ defmodule SeedFactory.SchemaTest do
                  %SeedFactory.ProducingInstruction{entity: :proposal, from: :proposal}
                ],
                required_entities: MapSet.new([:draft_project]),
-               resolve: &SchemaExample.resolve_0_generated_7F9023408EB309308B2A8A9C71AEAACF/1,
+               resolve: &SchemaExample.resolve_0_generated_760F3AAE84A314262EE1616EC1583D2F/1,
                updating_instructions: []
              },
              anonymize_profile_of_suspended_user: %SeedFactory.Command{
@@ -149,7 +149,7 @@ defmodule SeedFactory.SchemaTest do
                },
                producing_instructions: [],
                required_entities: MapSet.new([:profile, :user]),
-               resolve: &SchemaExample.resolve_0_generated_D1E6C7204BDE4ACD01B58915C3CEC71E/1,
+               resolve: &SchemaExample.resolve_0_generated_2F21AB2A2BABAECF79F24982211F6ED0/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :profile, from: :profile}
                ]
@@ -176,12 +176,34 @@ defmodule SeedFactory.SchemaTest do
                  }
                ],
                required_entities: MapSet.new([:approval_process]),
-               resolve: &SchemaExample.resolve_0_generated_6116A6271F7F0CE89A7222F6637E7A8F/1,
+               resolve: &SchemaExample.resolve_0_generated_224A074C182B8C840AB88365EA6AD318/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{
                    entity: :approval_process,
                    from: :approval_process
                  }
+               ]
+             },
+             archive_project: %SeedFactory.Command{
+               deleting_instructions: [],
+               name: :archive_project,
+               params: %{
+                 project: %SeedFactory.Parameter{
+                   entity: :project,
+                   generate: nil,
+                   map: nil,
+                   name: :project,
+                   params: %{},
+                   type: :entity,
+                   value: nil,
+                   with_traits: nil
+                 }
+               },
+               producing_instructions: [],
+               required_entities: MapSet.new([:project]),
+               resolve: &SchemaExample.resolve_0_generated_C5D5A1080411FF3BC4635FE37A406122/1,
+               updating_instructions: [
+                 %SeedFactory.UpdatingInstruction{entity: :project, from: :project}
                ]
              },
              complete_task: %SeedFactory.Command{
@@ -201,7 +223,7 @@ defmodule SeedFactory.SchemaTest do
                },
                producing_instructions: [],
                required_entities: MapSet.new([:task]),
-               resolve: &SchemaExample.resolve_0_generated_333B70627DFFACAE0A6BD073F2C4E675/1,
+               resolve: &SchemaExample.resolve_0_generated_D3E8714C9FE3F744E20FB2B7E89856C4/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :task, from: :task}
                ]
@@ -221,7 +243,7 @@ defmodule SeedFactory.SchemaTest do
                  }
                ],
                required_entities: MapSet.new([]),
-               resolve: &SchemaExample.resolve_0_generated_0F1CC00F8E5832040B3E1B4FA6A7E51C/1,
+               resolve: &SchemaExample.resolve_0_generated_A9895133DCE87707119ADFBD53DE469C/1,
                updating_instructions: []
              },
              create_draft_project: %SeedFactory.Command{
@@ -231,7 +253,7 @@ defmodule SeedFactory.SchemaTest do
                  name: %SeedFactory.Parameter{
                    entity: nil,
                    generate:
-                     &SchemaExample.generate_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                     &SchemaExample.generate_0_generated_5895C24D4750A17D9E3B5722DFA633BF/0,
                    map: nil,
                    name: :name,
                    params: %{},
@@ -254,7 +276,7 @@ defmodule SeedFactory.SchemaTest do
                  %SeedFactory.ProducingInstruction{entity: :draft_project, from: :project}
                ],
                required_entities: MapSet.new([:office]),
-               resolve: &SchemaExample.resolve_0_generated_DA51EA117C13FE36C9A0B18E5D9ECC12/1,
+               resolve: &SchemaExample.resolve_0_generated_2740D56C444EAB483E6E223C0EA89586/1,
                updating_instructions: []
              },
              create_office: %SeedFactory.Command{
@@ -264,7 +286,7 @@ defmodule SeedFactory.SchemaTest do
                  name: %SeedFactory.Parameter{
                    entity: nil,
                    generate:
-                     &SchemaExample.generate_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                     &SchemaExample.generate_0_generated_5895C24D4750A17D9E3B5722DFA633BF/0,
                    map: nil,
                    name: :name,
                    params: %{},
@@ -287,7 +309,7 @@ defmodule SeedFactory.SchemaTest do
                  %SeedFactory.ProducingInstruction{entity: :office, from: :office}
                ],
                required_entities: MapSet.new([:org]),
-               resolve: &SchemaExample.resolve_0_generated_DE3F3BC82EB1A0ECFC65DA3209C3BCF5/1,
+               resolve: &SchemaExample.resolve_0_generated_473AAE83EF4BBE14B6B0B4B415D9251A/1,
                updating_instructions: []
              },
              create_org: %SeedFactory.Command{
@@ -303,7 +325,7 @@ defmodule SeedFactory.SchemaTest do
                      city: %SeedFactory.Parameter{
                        entity: nil,
                        generate:
-                         &SchemaExample.generate_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                         &SchemaExample.generate_0_generated_5895C24D4750A17D9E3B5722DFA633BF/0,
                        map: nil,
                        name: :city,
                        params: %{},
@@ -314,7 +336,7 @@ defmodule SeedFactory.SchemaTest do
                      country: %SeedFactory.Parameter{
                        entity: nil,
                        generate:
-                         &SchemaExample.generate_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                         &SchemaExample.generate_0_generated_5895C24D4750A17D9E3B5722DFA633BF/0,
                        map: nil,
                        name: :country,
                        params: %{},
@@ -330,7 +352,7 @@ defmodule SeedFactory.SchemaTest do
                  name: %SeedFactory.Parameter{
                    entity: nil,
                    generate:
-                     &SchemaExample.generate_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                     &SchemaExample.generate_0_generated_5895C24D4750A17D9E3B5722DFA633BF/0,
                    map: nil,
                    name: :name,
                    params: %{},
@@ -343,7 +365,7 @@ defmodule SeedFactory.SchemaTest do
                  %SeedFactory.ProducingInstruction{entity: :org, from: :org}
                ],
                required_entities: MapSet.new([]),
-               resolve: &SchemaExample.resolve_0_generated_C9E261A7CEB6327F8844F3B180B40C30/1,
+               resolve: &SchemaExample.resolve_0_generated_8EBDFE37F15A561AC04FAB5BA12B73C2/1,
                updating_instructions: []
              },
              create_task: %SeedFactory.Command{
@@ -353,7 +375,7 @@ defmodule SeedFactory.SchemaTest do
                  text: %SeedFactory.Parameter{
                    entity: nil,
                    generate:
-                     &SchemaExample.generate_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                     &SchemaExample.generate_0_generated_5895C24D4750A17D9E3B5722DFA633BF/0,
                    map: nil,
                    name: :text,
                    params: %{},
@@ -366,7 +388,7 @@ defmodule SeedFactory.SchemaTest do
                  %SeedFactory.ProducingInstruction{entity: :task, from: :task}
                ],
                required_entities: MapSet.new([]),
-               resolve: &SchemaExample.resolve_0_generated_CB186AB1A0681BBD7B002CBA64D8C32A/1,
+               resolve: &SchemaExample.resolve_0_generated_0D507D35A926192FD24E8ADD63391E2D/1,
                updating_instructions: []
              },
              create_user: %SeedFactory.Command{
@@ -386,7 +408,7 @@ defmodule SeedFactory.SchemaTest do
                  name: %SeedFactory.Parameter{
                    entity: nil,
                    generate:
-                     &SchemaExample.generate_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                     &SchemaExample.generate_0_generated_5895C24D4750A17D9E3B5722DFA633BF/0,
                    map: nil,
                    name: :name,
                    params: %{},
@@ -397,7 +419,7 @@ defmodule SeedFactory.SchemaTest do
                  office_id: %SeedFactory.Parameter{
                    entity: :office,
                    generate: nil,
-                   map: &SchemaExample.map_0_generated_16C1099E6C1F2F2BF413FCD46A594112/1,
+                   map: &SchemaExample.map_0_generated_3FF8BB7A86AA4480EFAD42A6E4A70BB4/1,
                    name: :office_id,
                    params: %{},
                    type: :entity,
@@ -420,7 +442,7 @@ defmodule SeedFactory.SchemaTest do
                  %SeedFactory.ProducingInstruction{entity: :profile, from: :profile}
                ],
                required_entities: MapSet.new([:office]),
-               resolve: &SchemaExample.resolve_0_generated_81107CB99CF13C577404E2DB414831CD/1,
+               resolve: &SchemaExample.resolve_0_generated_9AC210B59D8F5815BEC1F491294AC2DC/1,
                updating_instructions: []
              },
              create_virtual_file: %SeedFactory.Command{
@@ -440,7 +462,7 @@ defmodule SeedFactory.SchemaTest do
                  content: %SeedFactory.Parameter{
                    entity: nil,
                    generate:
-                     &SchemaExample.generate_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                     &SchemaExample.generate_0_generated_5895C24D4750A17D9E3B5722DFA633BF/0,
                    map: nil,
                    name: :content,
                    params: %{},
@@ -472,8 +494,8 @@ defmodule SeedFactory.SchemaTest do
                producing_instructions: [
                  %SeedFactory.ProducingInstruction{entity: :virtual_file, from: :file}
                ],
-               required_entities: MapSet.new([:project, :user]),
-               resolve: &SchemaExample.resolve_0_generated_2B36E339936F23FD426D06D5490D9BC3/1,
+               required_entities: MapSet.new([:user, :project]),
+               resolve: &SchemaExample.resolve_0_generated_CCCB3F865ADE169901D82CC5FEFF48D5/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :project, from: :project}
                ]
@@ -495,7 +517,7 @@ defmodule SeedFactory.SchemaTest do
                },
                producing_instructions: [],
                required_entities: MapSet.new([:user]),
-               resolve: &SchemaExample.resolve_0_generated_BB7D80C861BBA279E03166977C76BBCF/1,
+               resolve: &SchemaExample.resolve_0_generated_F67D69DD4258B25927201B14AD7C8876/1,
                updating_instructions: []
              },
              deliver_email: %SeedFactory.Command{
@@ -515,7 +537,7 @@ defmodule SeedFactory.SchemaTest do
                },
                producing_instructions: [],
                required_entities: MapSet.new([:email]),
-               resolve: &SchemaExample.resolve_0_generated_6E4FC1C21E971D9D56C04FE600DAAD8B/1,
+               resolve: &SchemaExample.resolve_0_generated_EAE9DEB149823F722DFFBC280AF6F0FC/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :email, from: :email}
                ]
@@ -527,7 +549,7 @@ defmodule SeedFactory.SchemaTest do
                  name: %SeedFactory.Parameter{
                    entity: nil,
                    generate:
-                     &SchemaExample.generate_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                     &SchemaExample.generate_0_generated_5895C24D4750A17D9E3B5722DFA633BF/0,
                    map: nil,
                    name: :name,
                    params: %{},
@@ -554,7 +576,7 @@ defmodule SeedFactory.SchemaTest do
                  }
                ],
                required_entities: MapSet.new([:office]),
-               resolve: &SchemaExample.resolve_0_generated_ADB90C910B850CBFB4B13F053BF72B33/1,
+               resolve: &SchemaExample.resolve_0_generated_38AB9D561752710CA46AC0BFC6D5CDBA/1,
                updating_instructions: []
              },
              import_draft_project_from_third_party_service: %SeedFactory.Command{
@@ -564,7 +586,7 @@ defmodule SeedFactory.SchemaTest do
                  name: %SeedFactory.Parameter{
                    entity: nil,
                    generate:
-                     &SchemaExample.generate_0_generated_AE8EB7E9ED4C31FBA887B2124721814A/0,
+                     &SchemaExample.generate_0_generated_5895C24D4750A17D9E3B5722DFA633BF/0,
                    map: nil,
                    name: :name,
                    params: %{},
@@ -591,7 +613,7 @@ defmodule SeedFactory.SchemaTest do
                  }
                ],
                required_entities: MapSet.new([:office]),
-               resolve: &SchemaExample.resolve_0_generated_384DDC585135AABB92BBB73605C5BDCD/1,
+               resolve: &SchemaExample.resolve_0_generated_4AB4B53C6AC081BFDEC63D39CF58ED2E/1,
                updating_instructions: []
              },
              move_task_to_in_progress: %SeedFactory.Command{
@@ -611,7 +633,7 @@ defmodule SeedFactory.SchemaTest do
                },
                producing_instructions: [],
                required_entities: MapSet.new([:task]),
-               resolve: &SchemaExample.resolve_0_generated_4AC1432886D0A16759B86DE57D2DDAEA/1,
+               resolve: &SchemaExample.resolve_0_generated_FCA220C52D67D7C19C1604D0CA004185/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :task, from: :task}
                ]
@@ -623,7 +645,7 @@ defmodule SeedFactory.SchemaTest do
                  expiry_date: %SeedFactory.Parameter{
                    entity: nil,
                    generate:
-                     &SchemaExample.generate_0_generated_3B1031FC70302E22CAF9D5A1F09BD2AC/0,
+                     &SchemaExample.generate_0_generated_7F99D1225460EEA808E346B442A7D5B8/0,
                    map: nil,
                    name: :expiry_date,
                    params: %{},
@@ -654,7 +676,7 @@ defmodule SeedFactory.SchemaTest do
                  start_date: %SeedFactory.Parameter{
                    entity: nil,
                    generate:
-                     &SchemaExample.generate_0_generated_C2AD3F3EB84B6CE103A970747E2E709E/0,
+                     &SchemaExample.generate_0_generated_7CF4A6C502846B47087E85EAFA893284/0,
                    map: nil,
                    name: :start_date,
                    params: %{},
@@ -667,8 +689,8 @@ defmodule SeedFactory.SchemaTest do
                  %SeedFactory.ProducingInstruction{entity: :project, from: :project},
                  %SeedFactory.ProducingInstruction{entity: :email, from: :email}
                ],
-               required_entities: MapSet.new([:draft_project, :user]),
-               resolve: &SchemaExample.resolve_0_generated_D05B7590FAB6767A90BA1DC08844E587/1,
+               required_entities: MapSet.new([:user, :draft_project]),
+               resolve: &SchemaExample.resolve_0_generated_C141818E4E88F27CFC2D528EE1E2B0FF/1,
                updating_instructions: []
              },
              raise_exception: %SeedFactory.Command{
@@ -677,7 +699,7 @@ defmodule SeedFactory.SchemaTest do
                params: %{},
                producing_instructions: [],
                required_entities: MapSet.new([]),
-               resolve: &SchemaExample.resolve_0_generated_9B193121A70CFA40AEB7E70819330466/1,
+               resolve: &SchemaExample.resolve_0_generated_719F75E74239275E263426292AF0551F/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
                ]
@@ -688,7 +710,7 @@ defmodule SeedFactory.SchemaTest do
                params: %{},
                producing_instructions: [],
                required_entities: MapSet.new([]),
-               resolve: &SchemaExample.resolve_0_generated_86DFA5551DF1E7069C035938144FEFFE/1,
+               resolve: &SchemaExample.resolve_0_generated_0E0E10888E2AE53D322BB8BC68C9F05F/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
                ]
@@ -712,7 +734,7 @@ defmodule SeedFactory.SchemaTest do
                  %SeedFactory.ProducingInstruction{entity: :files_removal_task, from: :task}
                ],
                required_entities: MapSet.new([:profile]),
-               resolve: &SchemaExample.resolve_0_generated_7095E2EB33E2BEF6FAA40BFD4D7473A1/1,
+               resolve: &SchemaExample.resolve_0_generated_469E6B2E479D62A90FAB295422BE12C4/1,
                updating_instructions: []
              },
              start_approval_process: %SeedFactory.Command{
@@ -730,7 +752,7 @@ defmodule SeedFactory.SchemaTest do
                  }
                ],
                required_entities: MapSet.new([]),
-               resolve: &SchemaExample.resolve_0_generated_86B0C81BA0A9364904E482412A0F7100/1,
+               resolve: &SchemaExample.resolve_0_generated_7A4838E0C452DEA4E0FE3F06EE16AF6F/1,
                updating_instructions: []
              },
              suspend_user: %SeedFactory.Command{
@@ -752,32 +774,10 @@ defmodule SeedFactory.SchemaTest do
                  %SeedFactory.ProducingInstruction{entity: :email, from: :email}
                ],
                required_entities: MapSet.new([:user]),
-               resolve: &SchemaExample.resolve_0_generated_8268E1BC8B7D772BCC0110A498C06DD6/1,
+               resolve: &SchemaExample.resolve_0_generated_85888B7C671514955AB26CD5F639E2F3/1,
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
                ]
-             },
-             archive_project: %SeedFactory.Command{
-               name: :archive_project,
-               producing_instructions: [],
-               updating_instructions: [
-                 %SeedFactory.UpdatingInstruction{entity: :project, from: :project}
-               ],
-               deleting_instructions: [],
-               required_entities: MapSet.new([:project]),
-               resolve: &SchemaExample.resolve_0_generated_D2B5BFC13B0F025B8DC3E9DC2AA4AA70/1,
-               params: %{
-                 project: %SeedFactory.Parameter{
-                   name: :project,
-                   params: %{},
-                   map: nil,
-                   with_traits: nil,
-                   value: nil,
-                   generate: nil,
-                   entity: :project,
-                   type: :entity
-                 }
-               }
              }
            }
   end
