@@ -20,7 +20,7 @@ The package can be installed by adding `seed_factory` to your list of dependenci
 ```elixir
 def deps do
   [
-    {:seed_factory, "~> 0.5"}
+    {:seed_factory, "~> 0.6"}
   ]
 end
 ```
