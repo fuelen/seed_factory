@@ -1078,7 +1078,7 @@ defmodule SeedFactory do
         |> sync_current_traits(command, args)
 
       {:error, error} ->
-        raise "Unable to execue #{inspect(command_name)} command: #{inspect(error)}"
+        raise "Unable to execute #{inspect(command_name)} command: #{inspect(error)}"
     end
   end
 

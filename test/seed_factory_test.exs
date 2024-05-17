@@ -94,7 +94,7 @@ defmodule SeedFactoryTest do
 
   test "resolver returns an error", context do
     assert_raise RuntimeError,
-                 ~s|Unable to execue :resolve_with_error command: %{message: "OOPS", other_key: :data}|,
+                 ~s|Unable to execute :resolve_with_error command: %{message: "OOPS", other_key: :data}|,
                  fn ->
                    exec(context, :resolve_with_error)
                  end
