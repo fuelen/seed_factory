@@ -1,3 +1,5 @@
+<p align="center"><img src="logo.svg" alt="seed_factory" height="200px"></p>
+
 # SeedFactory
 
 [![CI](https://github.com/fuelen/seed_factory/actions/workflows/elixir.yml/badge.svg)](https://github.com/fuelen/seed_factory/actions/workflows/elixir.yml)
