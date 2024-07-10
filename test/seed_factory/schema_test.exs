@@ -788,7 +788,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema1]
-         root -> command -> action1:
+        root -> command -> action1:
           required :resolve option not found, received options: [:name]
         """
         |> String.trim_trailing(),
@@ -808,7 +808,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema2]
-         root -> command -> action1:
+        root -> command -> action1:
           duplicated command name
         """
         |> String.trim_trailing(),
@@ -837,7 +837,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.Command]
-         root -> command -> action1:
+        root -> command -> action1:
           at least 1 produce, update or delete directive must be set
         """
         |> String.trim_trailing(),
@@ -856,7 +856,7 @@ defmodule SeedFactory.SchemaTest do
     test "cyclic dependency with multiple commands" do
       prefix =
         Regex.escape(
-          "[SeedFactory.SchemaTest.MySchema5]\n root:\n  found dependency cycles:\n  * "
+          "[SeedFactory.SchemaTest.MySchema5]\nroot:\n  found dependency cycles:\n  * "
         )
 
       assert_raise(
@@ -907,7 +907,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema6]
-         root:
+        root:
           found dependency cycles:
           * :create_user
         """
@@ -932,7 +932,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema7]
-         root -> trait -> pending -> user:
+        root -> trait -> pending -> user:
           duplicated trait
         """
         |> String.trim_trailing(),
@@ -963,7 +963,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.Command]
-         root -> command -> create_user:
+        root -> command -> create_user:
           cannot apply multiple instructions on the same entity (:user)
         """
         |> String.trim_trailing(),
@@ -986,7 +986,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.Command]
-         root -> command -> create_user:
+        root -> command -> create_user:
           cannot apply multiple instructions on the same entity (:user)
         """
         |> String.trim_trailing(),
@@ -1011,7 +1011,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema10]
-         root -> trait -> pending -> user:
+        root -> trait -> pending -> user:
           contains an exec step to the :create_org command which neither produces nor updates the :user entity
         """
         |> String.trim_trailing(),
@@ -1045,7 +1045,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema11]
-         root -> trait -> pending -> org:
+        root -> trait -> pending -> org:
           unknown command :create_new_org
         """
         |> String.trim_trailing(),
@@ -1072,7 +1072,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema12]
-         root -> trait -> pending -> unknown:
+        root -> trait -> pending -> unknown:
           unknown entity
         """
         |> String.trim_trailing(),
@@ -1093,7 +1093,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema13]
-         root -> exec:
+        root -> exec:
           Option generate_args is required when args_match is specified
         """
         |> String.trim_trailing(),
@@ -1114,7 +1114,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema14]
-         root -> exec:
+        root -> exec:
           Option args_match is required when generate_args` is specified
         """
         |> String.trim_trailing(),
@@ -1135,7 +1135,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema15]
-         root -> exec:
+        root -> exec:
           Option args_pattern cannot be used with generate_args and args_match options
         """
         |> String.trim_trailing(),
@@ -1156,7 +1156,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema16]
-         root -> exec:
+        root -> exec:
           Option args_pattern cannot be used with generate_args and args_match options
         """
         |> String.trim_trailing(),
@@ -1177,7 +1177,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.Command]
-         root -> command -> nil:
+        root -> command -> nil:
           name of the command cannot be nil
         """
         |> String.trim_trailing(),
@@ -1198,7 +1198,7 @@ defmodule SeedFactory.SchemaTest do
         Spark.Error.DslError,
         """
         [SeedFactory.SchemaTest.MySchema18]
-         root -> param -> author:
+        root -> param -> author:
           :with_traits option can be used only if entity is specified
         """
         |> String.trim_trailing(),
