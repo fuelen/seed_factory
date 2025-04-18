@@ -177,6 +177,7 @@ defmodule SchemaExample do
     update :email
   end
 
+  # TODO: rename create_user to create_pending_user
   command :create_user do
     param :name, generate: &random_string/0
     param :role, value: :normal
@@ -210,7 +211,7 @@ defmodule SchemaExample do
     param :user, entity: :user, with_traits: [:pending]
 
     param :finances do
-      param :plan, value: :trial
+      param :plan, value: :free
     end
 
     resolve(fn args ->
@@ -218,6 +219,39 @@ defmodule SchemaExample do
     end)
 
     update :user
+  end
+
+  command :create_active_user do
+    param :name, generate: &random_string/0
+    param :role, value: :normal
+    param :contacts_confirmed?, value: false
+    param :office_id, entity: :office, map: &get_id/1
+
+    param :finances do
+      param :plan, value: :free
+    end
+
+    resolve(fn args ->
+      profile = %Profile{
+        name: args.name,
+        id: gen_id(),
+        contacts_confirmed?: args.contacts_confirmed?
+      }
+
+      user = %User{
+        office_id: args.office_id,
+        profile_id: profile.id,
+        id: gen_id(),
+        status: :active,
+        role: args.role,
+        plan: args.finances.plan
+      }
+
+      {:ok, %{user: user, profile: profile}}
+    end)
+
+    produce :user
+    produce :profile
   end
 
   command :suspend_user do
@@ -326,6 +360,14 @@ defmodule SchemaExample do
     exec :activate_user
   end
 
+  trait :active, :user do
+    exec :create_active_user
+  end
+
+  trait :pending_skipped, :user do
+    exec :create_active_user
+  end
+
   trait :suspended, :user do
     from :active
     exec :suspend_user
@@ -337,6 +379,14 @@ defmodule SchemaExample do
 
   trait :admin, :user do
     exec :create_user, args_pattern: %{role: :admin}
+  end
+
+  trait :normal, :user do
+    exec :create_active_user, args_pattern: %{role: :normal}
+  end
+
+  trait :admin, :user do
+    exec :create_active_user, args_pattern: %{role: :admin}
   end
 
   trait :unknown_plan, :user do
@@ -363,6 +413,14 @@ defmodule SchemaExample do
   trait :paid_plan, :user do
     from :unknown_plan
     exec :activate_user, args_pattern: %{finances: %{plan: :paid}}
+  end
+
+  trait :free_plan, :user do
+    exec :create_active_user, args_pattern: %{finances: %{plan: :free}}
+  end
+
+  trait :paid_plan, :user do
+    exec :create_active_user, args_pattern: %{finances: %{plan: :paid}}
   end
 
   trait :anonymized, :profile do
@@ -453,7 +511,7 @@ defmodule SchemaExample do
     produce :approved_candidate
   end
 
-  trait :approved_immediatelly, :approved_candidate do
+  trait :approved_immediately, :approved_candidate do
     exec :create_approved_candidate
   end
 

@@ -20,16 +20,26 @@ defmodule SeedFactory.Transformers.IndexTraits do
       |> Map.new(fn {entity, traits} ->
         ensure_known_entity(entity, hd(traits), dsl_state)
         ensure_unique_names(traits, entity)
-        ensure_traits_has_valid_commands(entity, traits, dsl_state)
+        ensure_traits_have_valid_commands(entity, traits, dsl_state)
+        traits = populate_to_field(traits)
 
         {entity,
          %{
            by_command_name: Enum.group_by(traits, & &1.exec_step.command_name),
-           by_name: Map.new(traits, &{&1.name, &1})
+           by_name: Enum.group_by(traits, & &1.name)
          }}
       end)
 
     {:ok, dsl_state |> Transformer.persist(:traits, traits)}
+  end
+
+  defp populate_to_field(traits) do
+    from_to_mapping = Enum.group_by(traits, & &1.from, & &1.name)
+
+    Enum.map(traits, fn trait ->
+      to = from_to_mapping[trait.name] || []
+      %{trait | to: to}
+    end)
   end
 
   defp ensure_known_entity(entity, trait, dsl_state) do
@@ -44,7 +54,7 @@ defmodule SeedFactory.Transformers.IndexTraits do
     end
   end
 
-  defp ensure_traits_has_valid_commands(entity, traits, dsl_state) do
+  defp ensure_traits_have_valid_commands(entity, traits, dsl_state) do
     command_by_name = Spark.Dsl.Transformer.get_persisted(dsl_state, :commands)
 
     case Enum.find(traits, fn trait ->
@@ -75,12 +85,12 @@ defmodule SeedFactory.Transformers.IndexTraits do
 
   defp ensure_unique_names(traits, entity) do
     traits
-    |> Enum.group_by(& &1.name)
+    |> Enum.group_by(&{&1.name, &1.exec_step.command_name})
     |> Enum.each(fn
-      {_trait_name, [_]} ->
+      {_, [_]} ->
         :ok
 
-      {trait_name, [_ | _]} ->
+      {{trait_name, _command_name}, [_ | _]} ->
         raise Spark.Error.DslError,
           path: [:root, :trait, trait_name, entity],
           message: "duplicated trait"

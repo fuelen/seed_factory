@@ -35,7 +35,7 @@ defmodule SeedFactory.Command do
 
     command = %{
       command
-      | required_entities: required_entities_from_params(params, MapSet.new()),
+      | required_entities: required_entities_from_params(params, %{}),
         params: params
     }
 
@@ -56,7 +56,8 @@ defmodule SeedFactory.Command do
             required_entities_from_params(parameter.params, acc)
 
           :entity ->
-            MapSet.put(acc, parameter.entity)
+            traits = MapSet.new(parameter.with_traits || [])
+            Map.update(acc, parameter.entity, traits, &MapSet.union(&1, traits))
         end
     end)
   end

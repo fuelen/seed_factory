@@ -1,10 +1,13 @@
 defmodule SeedFactory.Trait do
   @moduledoc false
+  @derive {Inspect, optional: [:from, :to]}
+
   defstruct [
     :name,
     :entity,
     :exec_step,
-    :from
+    :from,
+    to: []
   ]
 
   @schema [

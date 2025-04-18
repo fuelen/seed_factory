@@ -132,19 +132,19 @@ defmodule SeedFactory do
   Even though `:user` is the only entity specified explicitly, `context` will have 3 new keys: `:company`, `:user` and `:profile`.
 
   > #### Tip {: .tip}
-  > It is recommended to explicitly specify all entities in which you're insterested:
+  > It is recommended to explicitly specify all entities in which you're interested:
   > ```elixir
   > # good
-  > %{user: user} = produce(contex, :user)
+  > %{user: user} = produce(context, :user)
   >
   > # good
-  > %{user: user, profile: profile} = produce(contex, [:user, :profile])
+  > %{user: user, profile: profile} = produce(context, [:user, :profile])
   >
   > # good
-  > %{user: user, company: company} = produce(contex, [:user, :company])
+  > %{user: user, company: company} = produce(context, [:user, :company])
   >
   > # bad
-  > %{user: user, profile: profile, company: company} = produce(contex, :user)
+  > %{user: user, profile: profile, company: company} = produce(context, :user)
   > ```
 
   `exec/3` fails if produced entities are already present in the context.
@@ -299,7 +299,7 @@ defmodule SeedFactory do
       # specify a single entity
       %{user: _} = produce(context, :user)
 
-      # specify a list of entitities
+      # specify a list of entities
       %{user: _, company: _} = produce(context, [:user, :company])
 
       # rebind :user entity as :user1
@@ -326,16 +326,16 @@ defmodule SeedFactory do
 
     do_rebind(context, rebinding, fn context ->
       requirements =
-        init_requirements()
+        SeedFactory.Requirements.init()
         |> collect_requirements_for_entities_with_trait_names(
           context,
           entities_with_trait_names,
           nil,
           build_restrictions(context, entities_with_trait_names)
         )
-        |> resolve_conflicts()
+        |> SeedFactory.Requirements.resolve_conflicts()
 
-      lock_creation_of_dependent_entities(context, &exec_requirements(requirements, &1))
+      lock_creation_of_dependent_entities(context, &exec_requirements(&1, requirements))
     end)
   end
 
@@ -370,50 +370,22 @@ defmodule SeedFactory do
 
     do_rebind(context, rebinding, fn context ->
       requirements =
-        init_requirements()
+        SeedFactory.Requirements.init()
         |> collect_requirements_for_entities_with_trait_names(
           context,
           entities_with_trait_names,
           nil,
           build_restrictions(context, entities_with_trait_names)
         )
-        |> resolve_conflicts()
-        |> delete_requirements_which_are_requested_explicitly()
+        |> SeedFactory.Requirements.resolve_conflicts()
+        |> SeedFactory.Requirements.delete_explicitly_requested_commands()
 
-      lock_creation_of_dependent_entities(context, &exec_requirements(requirements, &1))
+      lock_creation_of_dependent_entities(context, &exec_requirements(&1, requirements))
     end)
   end
 
   def pre_produce(context, entity) when is_atom(entity) do
     pre_produce(context, [entity])
-  end
-
-  defp delete_requirements_which_are_requested_explicitly(requirements) do
-    Enum.reduce(requirements.commands, requirements, fn {command_name, data}, acc ->
-      if requested_explicitly?(data) do
-        delete_requirement(acc, command_name)
-      else
-        acc
-      end
-    end)
-  end
-
-  defp requested_explicitly?(data) do
-    nil in data.required_by
-  end
-
-  defp delete_requirement(requirements, command_name_to_delete) do
-    case requirements.commands[command_name_to_delete] do
-      nil ->
-        requirements
-
-      data ->
-        Enum.reduce(
-          data.required_by,
-          %{requirements | commands: Map.delete(requirements.commands, command_name_to_delete)},
-          &delete_requirement(&2, &1)
-        )
-    end
   end
 
   defp split_entities_and_rebinding(entities_and_rebinding) do
@@ -468,7 +440,7 @@ defmodule SeedFactory do
          _context,
          entities_with_trait_names,
          _required_by,
-         _limitations
+         _restrictions
        )
        when map_size(entities_with_trait_names) == 0 do
     requirements
@@ -503,7 +475,7 @@ defmodule SeedFactory do
               if absent_trait_names == [] do
                 acc
               else
-                %{by_name: trait_by_name} = fetch_traits!(context, entity_name)
+                %{by_name: traits_by_name} = fetch_traits!(context, entity_name)
 
                 trail =
                   context.__seed_factory_meta__.trails[binding_name] ||
@@ -512,120 +484,84 @@ defmodule SeedFactory do
                     Please don't put entities that can have traits manually in the context.
                     """
 
-                currently_executed =
-                  if current_trait_names == [] do
-                    %{trail.produced_by => %{}}
-                  else
-                    current_trait_names
-                    |> select_traits_with_dependencies_by_names(
-                      trait_by_name,
-                      entity_name,
-                      trail
-                    )
-                    |> ensure_no_restrictions!(restrictions, entity_name, :current)
-                    |> executed_commands_from_traits()
-                  end
-
-                absent_trait_names
-                |> select_traits_with_dependencies_by_names(
-                  trait_by_name,
+                ensure_traits_not_restricted!(
+                  restrictions,
                   entity_name,
-                  context.__seed_factory_meta__.trails[entity_name]
+                  binding_name,
+                  absent_trait_names,
+                  required_by
                 )
-                |> Enum.group_by(& &1.exec_step.command_name)
-                |> Enum.reduce(acc, fn {command_name, traits},
-                                       {requirements, command_names} = acc ->
-                  case currently_executed[command_name] do
-                    nil ->
-                      {add_non_conflicting_command_to_requirements(
-                         requirements,
-                         command_name,
-                         required_by,
-                         traits
-                       ), MapSet.put(command_names, command_name)}
 
-                    already_applied_args ->
-                      args = squash_args(traits)
-
-                      if deep_equal_maps?(args, already_applied_args) do
-                        acc
-                      else
-                        raise ArgumentError, """
-                        Args to previously executed command #{inspect(command_name)} do not match:
-                          args from previously applied traits: #{inspect(already_applied_args)}
-                          args for specified traits: #{inspect(args)}
-                        """
-                      end
-                  end
-                end)
+                collect_requirements_for_traits(
+                  acc,
+                  absent_trait_names,
+                  traits_by_name,
+                  entity_name,
+                  SeedFactory.Trail.to_map(trail),
+                  required_by
+                )
               end
             end
           else
             if trait_names == [] do
-              restrictions.traits
-              |> Enum.filter(fn trait ->
-                context
-                |> fetch_command_by_name!(trait.exec_step.command_name)
-                |> command_produces?(entity_name)
-              end)
-              |> Enum.group_by(& &1.exec_step.command_name)
-              |> Enum.to_list()
-              |> case do
-                [] ->
-                  command_names_that_can_produce_entity =
-                    fetch_command_names_by_entity_name!(context, entity_name)
+              command_names_that_can_produce_entity =
+                fetch_command_names_by_entity_name!(context, entity_name)
 
-                  {requirements, added_command_names} =
-                    add_conflicting_commands_to_requirements(
-                      requirements,
-                      command_names_that_can_produce_entity,
-                      required_by
-                    )
-
-                  {requirements, MapSet.union(command_names, added_command_names)}
-
-                [{command_name, traits}] ->
-                  {add_non_conflicting_command_to_requirements(
-                     requirements,
-                     command_name,
-                     required_by,
-                     traits
-                   ), MapSet.put(command_names, command_name)}
-              end
-            else
-              %{by_name: trait_by_name} = fetch_traits!(context, entity_name)
-
-              {acc, _} =
-                trait_names
-                |> select_traits_with_dependencies_by_names(
-                  trait_by_name,
-                  entity_name,
-                  context.__seed_factory_meta__.trails[entity_name]
+              {requirements, added_command_names} =
+                add_commands_to_requirements(
+                  requirements,
+                  command_names_that_can_produce_entity,
+                  required_by,
+                  []
                 )
-                |> ensure_no_restrictions!(restrictions, entity_name, :new)
-                |> Enum.reduce({acc, nil}, fn trait,
-                                              {{requirements, command_names},
-                                               previous_command_name} ->
-                  dependency_for_previous_trait? = trait.name not in trait_names
 
-                  required_by =
-                    if dependency_for_previous_trait? do
-                      previous_command_name
-                    else
-                      required_by
-                    end
+              {requirements, MapSet.union(command_names, added_command_names)}
+            else
+              ensure_traits_not_restricted!(
+                restrictions,
+                entity_name,
+                binding_name,
+                trait_names,
+                required_by
+              )
 
-                  command_name = trait.exec_step.command_name
+              %{by_name: traits_by_name} = fetch_traits!(context, entity_name)
 
-                  {{add_non_conflicting_command_to_requirements(
-                      requirements,
-                      command_name,
-                      required_by,
-                      [trait]
-                    ), MapSet.put(command_names, command_name)}, command_name}
-                end)
+              command_names_that_can_produce_entity =
+                fetch_command_names_by_entity_name!(context, entity_name)
 
-              acc
+              {requirements, added_command_names} =
+                add_commands_to_requirements(
+                  requirements,
+                  command_names_that_can_produce_entity,
+                  required_by,
+                  []
+                )
+
+              trait_names
+              |> Enum.reduce(
+                {requirements, MapSet.union(command_names, added_command_names)},
+                fn trait_name, {requirements, command_names} ->
+                  case Map.fetch(traits_by_name, trait_name) do
+                    {:ok, traits} ->
+                      command_names_to_add = Enum.map(traits, & &1.exec_step.command_name)
+
+                      {requirements, added_command_names} =
+                        add_commands_to_requirements(
+                          requirements,
+                          command_names_to_add,
+                          required_by,
+                          traits
+                        )
+
+                      {requirements, MapSet.union(command_names, MapSet.new(added_command_names))}
+
+                    :error ->
+                      raise ArgumentError,
+                            "Entity #{inspect(entity_name)} doesn't have trait #{inspect(trait_name)}"
+                  end
+                end
+              )
             end
           end
         end
@@ -657,10 +593,91 @@ defmodule SeedFactory do
     end)
   end
 
-  defp command_produces?(command, entity_name) do
-    Enum.any?(command.producing_instructions, fn instruction ->
-      instruction.entity == entity_name
-    end)
+  defp ensure_traits_not_restricted!(
+         restrictions,
+         entity_name,
+         binding_name,
+         trait_names_to_apply,
+         required_by
+       ) do
+    case Map.fetch(restrictions.subsequent_traits, entity_name) do
+      {:ok, subsequent_traits} ->
+        intersection = intersection(trait_names_to_apply, subsequent_traits)
+
+        if Enum.any?(intersection) do
+          raise ArgumentError, """
+          Cannot apply traits #{inspect(intersection)} to #{inspect(binding_name)} as a requirement for #{inspect(required_by)} command.
+          The entity was requested with the following traits: #{inspect(Map.fetch!(restrictions.requested_trait_names_by_entity, entity_name))}.
+          """
+        end
+
+        :ok
+
+      :error ->
+        :noop
+    end
+  end
+
+  defp ensure_current_trait_names_do_not_conflict_with_required_trait_names!(
+         context,
+         entity_name,
+         subsequent_traits,
+         required_trait_names
+       ) do
+    binding_name = binding_name(context, entity_name)
+
+    case context.__seed_factory_meta__.trails[binding_name] do
+      nil ->
+        :noop
+
+      trail ->
+        do_ensure_current_trait_names_do_not_conflict_with_required_trait_names!(
+          subsequent_traits,
+          required_trait_names,
+          binding_name,
+          current_trait_names(context, binding_name),
+          trail
+        )
+    end
+  end
+
+  defp do_ensure_current_trait_names_do_not_conflict_with_required_trait_names!(
+         subsequent_traits,
+         required_trait_names,
+         binding_name,
+         current_trait_names,
+         trail
+       ) do
+    intersection = intersection(current_trait_names, subsequent_traits)
+
+    if Enum.any?(intersection) do
+      # Generic case lists all the trait_names_to_apply, but trail analysis can provide more
+      # specific information for error message
+      trail_analysis =
+        trail
+        |> SeedFactory.Trail.to_list()
+        |> Enum.find_value(fn {command_name, _added, removed} ->
+          case intersection(required_trait_names, removed) do
+            [] -> nil
+            intersection -> {command_name, intersection}
+          end
+        end)
+
+      case trail_analysis do
+        nil ->
+          raise ArgumentError, """
+          Cannot apply traits #{inspect(required_trait_names)} to #{inspect(binding_name)}.
+          There is no path from traits #{inspect(intersection)}.
+          Current traits: #{inspect(current_trait_names)}.
+          """
+
+        {command_name, intersection} ->
+          raise ArgumentError, """
+          Cannot apply traits #{inspect(intersection)} to #{inspect(binding_name)} because they were removed by the command #{inspect(command_name)}.
+          Current traits: #{inspect(current_trait_names)}.
+          """
+      end
+    end
   end
 
   defp fetch_command_by_name!(context, command_name) do
@@ -677,243 +694,78 @@ defmodule SeedFactory do
     end
   end
 
-  defp ensure_no_restrictions!(traits, restrictions, entity_name, scenario) do
-    case restrictions.trait_names_by_entity do
-      %{^entity_name => requested_trait_names} ->
-        case Enum.find(traits, fn
-               %SeedFactory.Trait{from: nil} -> false
-               %SeedFactory.Trait{from: from} -> from in requested_trait_names
-             end) do
-          nil ->
-            traits
-
-          trait ->
-            message =
-              case scenario do
-                :new ->
-                  """
-                  Cannot apply trait #{inspect(trait.name)} to entity #{inspect(entity_name)}.
-                  The entity was requested with the following traits: #{inspect(requested_trait_names)}
-                  """
-
-                :current ->
-                  """
-                  Cannot apply traits #{inspect(requested_trait_names)} to entity #{inspect(entity_name)}.
-                  The entity already exists with traits that depend on requested ones.
-                  """
-              end
-
-            raise ArgumentError, message
-        end
-
-      _ ->
-        traits
-    end
+  defp add_commands_to_requirements(requirements, [command_name], required_by, traits) do
+    {SeedFactory.Requirements.add_or_link_command(
+       requirements,
+       command_name,
+       required_by,
+       traits,
+       :no_conflict
+     ), MapSet.new([command_name])}
   end
 
-  defp add_conflicting_commands_to_requirements(requirements, [command_name], required_by) do
-    {add_non_conflicting_command_to_requirements(requirements, command_name, required_by, []),
-     MapSet.new([command_name])}
-  end
-
-  defp add_conflicting_commands_to_requirements(requirements, command_names, required_by) do
+  defp add_commands_to_requirements(requirements, command_names, required_by, traits) do
     # if the command can be found in requirements, and it doesn't have any conflict, it means, that it was requested
     # without ambiguity, so we can skip conflict resolution for the command
     case Enum.find(
            command_names,
            fn command_name ->
              Map.has_key?(requirements.commands, command_name) and
-               not command_or_anything_in_vertical_conflicts?(
+               not SeedFactory.Requirements.command_or_anything_in_vertical_conflicts?(
                  requirements.commands,
                  command_name
                )
            end
          ) do
       nil ->
-        case analyze_conflict_group(requirements, command_names) do
+        case SeedFactory.Requirements.analyze_conflict_group(requirements, command_names) do
           :new_group ->
             requirements =
               command_names
               |> Enum.reduce(requirements, fn command_name, requirements ->
-                add_conflicting_command_to_requirements(
+                SeedFactory.Requirements.add_or_link_command(
                   requirements,
                   command_name,
                   required_by,
-                  command_names
+                  traits,
+                  :in_conflict_group
                 )
               end)
-              |> Map.update!(:unresolved_conflict_groups, &[command_names | &1])
+              |> SeedFactory.Requirements.add_conflict_group(command_names)
 
             {requirements, MapSet.new(command_names)}
 
           :exists ->
-            requirements = link_commands(requirements, command_names, required_by)
+            requirements =
+              SeedFactory.Requirements.link_commands(
+                requirements,
+                command_names,
+                required_by,
+                traits
+              )
+
             {requirements, MapSet.new([])}
 
           {:is_subset, diff} ->
             requirements =
               diff
-              |> Enum.reduce(requirements, &remove_command(&2, &1))
-              |> link_commands(command_names, required_by)
+              |> Enum.reduce(requirements, &SeedFactory.Requirements.remove_command(&2, &1))
+              |> SeedFactory.Requirements.link_commands(command_names, required_by, traits)
 
             {requirements, MapSet.new([])}
 
           {:contains_subset, subset} ->
-            requirements = link_commands(requirements, subset, required_by)
+            requirements =
+              SeedFactory.Requirements.link_commands(requirements, subset, required_by, traits)
+
             {requirements, MapSet.new([])}
         end
 
       command_name ->
-        requirements = link_commands(requirements, command_name, required_by)
+        requirements =
+          SeedFactory.Requirements.link_commands(requirements, command_name, required_by, traits)
+
         {requirements, MapSet.new()}
-    end
-  end
-
-  defp analyze_conflict_group(requirements, conflict_group_to_analyze) do
-    unresolved_conflict_groups = requirements.unresolved_conflict_groups
-    conflict_group_to_analyze_mapset = MapSet.new(conflict_group_to_analyze)
-
-    Enum.find_value(unresolved_conflict_groups, :new_group, fn unresolved_conflict_group ->
-      unresolved_conflict_group_mapset = MapSet.new(unresolved_conflict_group)
-
-      cond do
-        conflict_group_to_analyze == unresolved_conflict_group ->
-          :exists
-
-        MapSet.subset?(conflict_group_to_analyze_mapset, unresolved_conflict_group_mapset) ->
-          {:is_subset,
-           MapSet.difference(unresolved_conflict_group_mapset, conflict_group_to_analyze_mapset)}
-
-        MapSet.subset?(unresolved_conflict_group_mapset, conflict_group_to_analyze_mapset) ->
-          {:contains_subset, unresolved_conflict_group}
-
-        true ->
-          false
-      end
-    end)
-  end
-
-  defp command_or_anything_in_vertical_conflicts?(commands, command_name) do
-    data = commands[command_name]
-
-    data.conflict_groups != [] or anything_in_vertical_conflicts?(commands, command_name)
-  end
-
-  defp anything_in_vertical_conflicts?(commands, command_name) do
-    data = commands[command_name]
-
-    Enum.any?(data.required_by, fn
-      nil -> false
-      command_name -> command_or_anything_in_vertical_conflicts?(commands, command_name)
-    end)
-  end
-
-  defp add_non_conflicting_command_to_requirements(
-         requirements,
-         command_name,
-         required_by,
-         traits
-       ) do
-    case requirements.commands do
-      %{^command_name => data} ->
-        requirements
-        |> update_in(
-          [:commands, command_name],
-          &%{
-            &1
-            | args: squash_args(traits, &1.args),
-              required_by: MapSet.put(&1.required_by, required_by)
-          }
-        )
-        |> add_command_name_to_requires_field(required_by, command_name)
-        |> auto_resolve_conflict_if_possible(command_name, data.conflict_groups)
-
-      _ ->
-        add_new_command_to_requirements(requirements, command_name, %{
-          conflict_groups: [],
-          traits: traits,
-          required_by: required_by
-        })
-    end
-  end
-
-  defp auto_resolve_conflict_if_possible(requirements, command_name, conflict_groups) do
-    has_conflict? = conflict_groups != []
-
-    if has_conflict? and
-         not anything_in_vertical_conflicts?(requirements.commands, command_name) do
-      resolve_conflicts_in_favour_of_the_command(requirements, command_name)
-    else
-      requirements
-    end
-  end
-
-  defp add_conflicting_command_to_requirements(
-         requirements,
-         command_name,
-         required_by,
-         conflict_group
-       ) do
-    if Map.has_key?(requirements.commands, command_name) do
-      requirements
-      |> update_in(
-        [:commands, command_name],
-        &%{
-          &1
-          | required_by: MapSet.put(&1.required_by, required_by),
-            conflict_groups: [conflict_group | &1.conflict_groups]
-        }
-      )
-      |> add_command_name_to_requires_field(required_by, command_name)
-    else
-      add_new_command_to_requirements(requirements, command_name, %{
-        conflict_groups: [conflict_group],
-        traits: [],
-        required_by: required_by
-      })
-    end
-  end
-
-  defp add_new_command_to_requirements(requirements, command_name, params) do
-    requirements
-    |> put_in([:commands, command_name], %{
-      conflict_groups: params.conflict_groups,
-      requires: MapSet.new(),
-      args: squash_args(params.traits),
-      required_by: MapSet.new([params.required_by])
-    })
-    |> add_command_name_to_requires_field(params.required_by, command_name)
-  end
-
-  defp link_commands(requirements, command_names, required_by) when is_list(command_names) do
-    Enum.reduce(command_names, requirements, &link_commands(&2, &1, required_by))
-  end
-
-  defp link_commands(requirements, command_name, required_by) do
-    requirements
-    |> add_command_name_to_required_by_field(command_name, required_by)
-    |> add_command_name_to_requires_field(required_by, command_name)
-  end
-
-  defp add_command_name_to_required_by_field(requirements, command_name, command_name_to_add) do
-    update_in(
-      requirements,
-      [:commands, command_name, :required_by],
-      &MapSet.put(&1, command_name_to_add)
-    )
-  end
-
-  defp add_command_name_to_requires_field(requirements, command_name, command_name_to_add) do
-    case command_name do
-      nil ->
-        requirements
-
-      command_name ->
-        update_in(
-          requirements,
-          [:commands, command_name, :requires],
-          &MapSet.put(&1, command_name_to_add)
-        )
     end
   end
 
@@ -941,6 +793,10 @@ defmodule SeedFactory do
     end)
   end
 
+  defp get_traits(context, entity_name) do
+    context.__seed_factory_meta__.traits[entity_name]
+  end
+
   defp fetch_traits!(context, entity_name) do
     case Map.fetch(context.__seed_factory_meta__.traits, entity_name) do
       {:ok, value} -> value
@@ -948,23 +804,106 @@ defmodule SeedFactory do
     end
   end
 
-  defp executed_commands_from_traits(traits) do
-    traits
-    |> Enum.group_by(& &1.exec_step.command_name)
-    |> Map.new(fn {command_name, traits} -> {command_name, squash_args(traits)} end)
-  end
-
-  defp select_traits_with_dependencies_by_names(trait_names, trait_by_name, entity_name, trail) do
-    Enum.flat_map(trait_names, fn trait_name ->
-      case Map.fetch(trait_by_name, trait_name) do
-        {:ok, trait} ->
-          resolve_trait_depedencies(trait, trait_by_name, trail)
+  defp collect_requirements_for_traits(
+        acc,
+        trait_names,
+        traits_by_name,
+        entity_name,
+        trail_map,
+        required_by
+      ) do
+    Enum.reduce(trait_names, acc, fn trait_name, acc ->
+      case Map.fetch(traits_by_name, trait_name) do
+        {:ok, traits} ->
+          do_collect_requirements_for_traits(acc, traits, traits_by_name, trail_map, required_by)
 
         :error ->
           raise ArgumentError,
                 "Entity #{inspect(entity_name)} doesn't have trait #{inspect(trait_name)}"
       end
     end)
+  end
+
+  defp do_collect_requirements_for_traits(
+        {requirements, command_names} = acc,
+        traits,
+        traits_by_name,
+        trail_map,
+        required_by
+      ) do
+    Enum.find_value(traits, fn trait ->
+      case trail_map[trait.exec_step.command_name] do
+        nil -> nil
+        data -> {trait, data}
+      end
+    end)
+    |> case do
+      nil ->
+        {requirements, added_command_names} =
+          add_commands_to_requirements(
+            requirements,
+            Enum.map(traits, & &1.exec_step.command_name),
+            required_by,
+            traits
+          )
+
+        acc = {requirements, MapSet.union(command_names, added_command_names)}
+
+        Enum.reduce(traits, acc, fn trait, acc ->
+          case trait.from do
+            nil ->
+              acc
+
+            from when is_atom(from) ->
+              do_collect_requirements_for_traits(
+                acc,
+                traits_by_name[from],
+                traits_by_name,
+                trail_map,
+                required_by
+              )
+
+            from_any_of when is_list(from_any_of) ->
+              if Enum.any?(from_any_of, fn from ->
+                   traits = traits_by_name[from]
+
+                   Enum.any?(traits, fn trait ->
+                     data = trail_map[trait.exec_step.command_name]
+                     data && trait.name in data.added
+                   end)
+                 end) do
+                acc
+              else
+                from = hd(from_any_of)
+
+                do_collect_requirements_for_traits(
+                  acc,
+                  traits_by_name[from],
+                  traits_by_name,
+                  trail_map,
+                  required_by
+                )
+              end
+          end
+        end)
+
+      {trait, %{added: added}} ->
+        if trait.name in added do
+          acc
+        else
+          label =
+            case required_by do
+              nil -> "specified trait"
+              command_name -> "trait required by #{inspect(command_name)} command"
+            end
+
+          raise ArgumentError, """
+          Traits to previously executed command #{inspect(trait.exec_step.command_name)} do not match:
+            previously applied traits: #{inspect(added)}
+            #{label}: #{inspect(trait.name)}
+          """
+        end
+    end
   end
 
   defp squash_args(traits, initial_args \\ %{}) do
@@ -1017,37 +956,6 @@ defmodule SeedFactory do
     end)
   end
 
-  defp resolve_trait_depedencies(trait, trait_by_name, trail) do
-    case trait.from do
-      nil ->
-        [trait]
-
-      from when is_atom(from) ->
-        from_trait = trait_by_name[from]
-        [trait | resolve_trait_depedencies(from_trait, trait_by_name, trail)]
-
-      from_any_of when is_list(from_any_of) ->
-        from_trait =
-          case trail do
-            nil ->
-              trait_by_name[hd(from_any_of)]
-
-            trail ->
-              trait_by_command_name =
-                Map.new(from_any_of, fn from ->
-                  from_trait = trait_by_name[from]
-                  {from_trait.exec_step.command_name, from_trait}
-                end)
-
-              Enum.find_value(trail.updated_by, fn command_name ->
-                trait_by_command_name[command_name]
-              end) || trait_by_command_name[trail.produced_by]
-          end
-
-        [trait | resolve_trait_depedencies(from_trait, trait_by_name, trail)]
-    end
-  end
-
   @doc """
   Executes a command and updates the `context` according to the schema.
 
@@ -1074,8 +982,7 @@ defmodule SeedFactory do
         |> exec_producing_instructions(command, resolver_output)
         |> exec_updating_instructions(command, resolver_output)
         |> exec_deleting_instructions(command)
-        |> store_trails(command)
-        |> sync_current_traits(command, args)
+        |> store_trails_and_sync_current_traits(command, args)
 
       {:error, error} ->
         raise "Unable to execute #{inspect(command_name)} command: #{inspect(error)}"
@@ -1121,16 +1028,18 @@ defmodule SeedFactory do
 
   defp create_dependent_entities_if_needed(context, command, initial_input) do
     lock_creation_of_dependent_entities(context, fn context ->
-      init_requirements()
-      |> collect_requirements_for_command(
-        context,
-        command,
-        initial_input,
-        nil,
-        build_restrictions(context, [])
-      )
-      |> resolve_conflicts()
-      |> exec_requirements(context)
+      requirements =
+        SeedFactory.Requirements.init()
+        |> collect_requirements_for_command(
+          context,
+          command,
+          initial_input,
+          nil,
+          build_restrictions(context, [])
+        )
+        |> SeedFactory.Requirements.resolve_conflicts()
+
+      exec_requirements(context, requirements)
     end)
   end
 
@@ -1145,270 +1054,81 @@ defmodule SeedFactory do
     end
   end
 
-  defp resolve_conflicts(%{unresolved_conflict_groups: []} = requirements) do
-    requirements
-  end
-
-  defp resolve_conflicts(
-         %{unresolved_conflict_groups: [[primary_command_name | _] | _]} = requirements
-       ) do
-    requirements
-    |> resolve_conflicts_in_favour_of_the_command(primary_command_name)
-    |> resolve_conflicts()
-  end
-
-  defp resolve_conflicts_in_favour_of_the_command(requirements, command_name_to_keep) do
-    data = Map.fetch!(requirements.commands, command_name_to_keep)
-
-    all_command_names_in_conflict_groups =
-      data.conflict_groups
-      |> List.flatten()
-      |> Enum.uniq()
-
-    Enum.reduce(
-      all_command_names_in_conflict_groups,
-      requirements,
-      fn command_name, requirements ->
-        if command_name == command_name_to_keep do
-          requirements
-        else
-          remove_command(requirements, command_name)
-        end
-      end
-    )
-  end
-
-  defp remove_command(requirements, command_name) do
-    data = Map.fetch!(requirements.commands, command_name)
-
-    commands =
-      requirements.commands
-      |> Map.delete(command_name)
-      |> remove_command_name_from_requires_field(command_name, data.required_by)
-
-    requirements = %{requirements | commands: commands}
-
-    requirements =
-      remove_command_name_from_conflict_groups_if_present(
-        requirements,
-        data.conflict_groups,
-        command_name
-      )
-
-    Enum.reduce(
-      data.requires,
-      requirements,
-      &remove_command_while_required_by_is_empty(&2, &1, command_name)
-    )
-  end
-
-  defp remove_command_while_required_by_is_empty(
-         requirements,
-         command_name,
-         deleted_required_by
-       ) do
-    data = Map.fetch!(requirements.commands, command_name)
-    new_required_by = MapSet.delete(data.required_by, deleted_required_by)
-
-    if Enum.empty?(new_required_by) do
-      remove_command(requirements, command_name)
-    else
-      update_in(requirements, [:commands, command_name], &%{&1 | required_by: new_required_by})
-    end
-  end
-
-  defp remove_command_name_from_conflict_groups_if_present(
-         requirements,
-         [],
-         _command_name_to_remove
-       ) do
-    requirements
-  end
-
-  defp remove_command_name_from_conflict_groups_if_present(
-         requirements,
-         conflict_groups,
-         command_name_to_remove
-       ) do
-    conflict_groups
-    |> Enum.reduce(requirements, fn conflict_group, requirements ->
-      command_names_to_update = List.delete(conflict_group, command_name_to_remove)
-
-      new_conflict_group =
-        case command_names_to_update do
-          [_] -> []
-          group -> group
-        end
-
-      if new_conflict_group == conflict_group do
-        requirements
-      else
-        unresolved_conflict_groups =
-          List.delete(requirements.unresolved_conflict_groups, conflict_group)
-
-        unresolved_conflict_groups =
-          if new_conflict_group == [] do
-            unresolved_conflict_groups
-          else
-            [new_conflict_group | unresolved_conflict_groups]
-          end
-
-        commands =
-          Enum.reduce(command_names_to_update, requirements.commands, fn command_name, commands ->
-            Map.update!(
-              commands,
-              command_name,
-              &%{
-                &1
-                | conflict_groups:
-                    replace_conflict_group(&1.conflict_groups, conflict_group, new_conflict_group)
-              }
-            )
-          end)
-
-        %{commands: commands, unresolved_conflict_groups: unresolved_conflict_groups}
-      end
-    end)
-  end
-
-  defp replace_conflict_group(conflict_groups, old, new) do
-    [new | List.delete(conflict_groups, old)]
-  end
-
-  defp remove_command_name_from_requires_field(
-         commands,
-         command_name_to_remove,
-         target_command_names
-       ) do
-    Enum.reduce(target_command_names, commands, fn
-      nil, commands ->
-        commands
-
-      required_by_command_name, commands ->
-        if Map.has_key?(commands, required_by_command_name) do
-          update_in(
-            commands,
-            [required_by_command_name, :requires],
-            &MapSet.delete(&1, command_name_to_remove)
-          )
-        else
-          commands
-        end
-    end)
-  end
-
-  defp exec_requirements(requirements, context) when requirements.commands == %{} do
+  defp exec_requirements(context, requirements) when requirements.commands == %{} do
     context
   end
 
-  defp exec_requirements(requirements, context) do
-    requirements =
-      add_additional_requirements_to_commands_that_delete_entities(requirements, context)
-
-    requirements.commands
-    |> topologically_sorted_commands()
+  defp exec_requirements(context, requirements) do
+    requirements
+    |> SeedFactory.Requirements.deprioritize_commands_that_delete_entities_or_remove_traits(
+      fn command_name -> fetch_command_by_name!(context, command_name) end,
+      fn entity_name -> get_traits(context, entity_name) end
+    )
+    |> SeedFactory.Requirements.topologically_sorted_commands()
     |> Enum.reduce(context, fn
-      command_name, context ->
-        # command should not be executed if it can be found in `required_by` field but not in `requirements` by key .
-        # it can't be found if it is nil (top level required_by value) or if it was removed by `pre_exec` function
-        case requirements.commands[command_name] do
-          nil -> context
-          %{args: args} -> exec(context, command_name, args)
-        end
+      command, context ->
+        args = command.required_by |> Map.values() |> List.flatten() |> squash_args()
+        exec(context, command.name, args)
     end)
   end
 
-  # such commands should be executed after commands which use entities that will be deleted
-  defp add_additional_requirements_to_commands_that_delete_entities(requirements, context) do
-    commands = requirements.commands
-
-    Enum.reduce(commands, requirements, fn {command_name, data}, requirements ->
-      command = fetch_command_by_name!(context, command_name)
-
-      command_names_to_link =
-        Enum.flat_map(command.deleting_instructions, fn %{entity: entity} ->
-          Enum.flat_map(data.requires, fn requires_command_name ->
-            Enum.filter(
-              commands[requires_command_name].required_by,
-              fn
-                nil ->
-                  false
-
-                required_by_command_name ->
-                  required_by_command_name != command_name and
-                    entity in fetch_command_by_name!(context, required_by_command_name).required_entities
-              end
-            )
-          end)
-        end)
-
-      link_commands(requirements, command_names_to_link, command_name)
+  defp traits_diff(possible_traits, args) do
+    Enum.reduce(possible_traits, {[], []}, fn trait, {add, remove} = acc ->
+      if args_match?(trait, args) do
+        {[trait.name | add], List.wrap(trait.from) ++ remove}
+      else
+        acc
+      end
     end)
   end
 
-  defp topologically_sorted_commands(commands) do
-    commands
-    |> Enum.reduce(Graph.new(), fn {command_name, %{required_by: required_by}}, graph ->
-      Enum.reduce(required_by, graph, fn dependent_command, graph ->
-        Graph.add_edge(graph, command_name, dependent_command)
-      end)
-    end)
-    |> Graph.topsort()
+  defp possible_traits(context, entity_name, command_name) do
+    List.wrap(context.__seed_factory_meta__.traits[entity_name][:by_command_name][command_name])
   end
 
-  defp sync_current_traits(context, command, args) do
-    traits_diff =
-      Enum.flat_map(
-        command.producing_instructions ++ command.updating_instructions,
-        fn %{entity: entity} ->
-          case context.__seed_factory_meta__.traits[entity][:by_command_name][command.name] do
-            nil ->
-              []
-
-            possible_traits ->
-              binding_name = binding_name(context, entity)
-
-              diff =
-                Enum.reduce(possible_traits, {[], []}, fn trait, {remove, add} = acc ->
-                  if args_match?(trait, args) do
-                    {List.wrap(trait.from) ++ remove, [trait.name | add]}
-                  else
-                    acc
-                  end
-                end)
-
-              [{binding_name, diff}]
-          end
-        end
-      )
-
-    context
-    |> update_meta(:current_traits, fn current_traits ->
-      Enum.reduce(traits_diff, current_traits, fn {binding_name, {remove, add}}, current_traits ->
-        current_trait_names = current_traits[binding_name] || []
-        new_trait_names = (current_trait_names -- remove) ++ add
-        Map.put(current_traits, binding_name, new_trait_names)
-      end)
-    end)
-    |> delete_from_current_traits(command.deleting_instructions)
+  defp sync_current_traits(current_traits, binding_name, added_traits, removed_traits) do
+    current_trait_names = current_traits[binding_name] || []
+    new_trait_names = (current_trait_names -- removed_traits) ++ added_traits
+    Map.put(current_traits, binding_name, new_trait_names)
   end
 
-  defp store_trails(context, command) do
+  defp store_trails_and_sync_current_traits(context, command, args) do
     context =
       Enum.reduce(command.producing_instructions, context, fn instruction, context ->
         binding_name = binding_name(context, instruction.entity)
 
-        trail = SeedFactory.Trail.new(command.name)
-        update_meta(context, :trails, &Map.put(&1, binding_name, trail))
+        {added_traits, removed_traits} =
+          context |> possible_traits(instruction.entity, command.name) |> traits_diff(args)
+
+        trail = SeedFactory.Trail.new({command.name, added_traits, removed_traits})
+
+        context
+        |> update_meta(:trails, &Map.put(&1, binding_name, trail))
+        |> update_meta(
+          :current_traits,
+          &sync_current_traits(&1, binding_name, added_traits, removed_traits)
+        )
       end)
 
     context =
       Enum.reduce(command.updating_instructions, context, fn instruction, context ->
         binding_name = binding_name(context, instruction.entity)
 
-        update_meta(context, :trails, fn trails ->
-          Map.update!(trails, binding_name, &SeedFactory.Trail.add_updated_by(&1, command.name))
+        {added_traits, removed_traits} =
+          context |> possible_traits(instruction.entity, command.name) |> traits_diff(args)
+
+        context
+        |> update_meta(:trails, fn trails ->
+          Map.update!(
+            trails,
+            binding_name,
+            &SeedFactory.Trail.add_updated_by(&1, {command.name, added_traits, removed_traits})
+          )
         end)
+        |> update_meta(
+          :current_traits,
+          &sync_current_traits(&1, binding_name, added_traits, removed_traits)
+        )
       end)
 
     case command.deleting_instructions do
@@ -1418,24 +1138,14 @@ defmodule SeedFactory do
       deleting_instructions ->
         binding_names = Enum.map(deleting_instructions, &binding_name(context, &1.entity))
 
-        update_meta(context, :trails, &Map.drop(&1, binding_names))
+        context
+        |> update_meta(:trails, &Map.drop(&1, binding_names))
+        |> update_meta(:current_traits, &Map.drop(&1, binding_names))
     end
   end
 
   defp current_trait_names(context, binding_name) do
     context.__seed_factory_meta__.current_traits[binding_name] || []
-  end
-
-  defp delete_from_current_traits(context, deleting_instructions) do
-    case deleting_instructions do
-      [] ->
-        context
-
-      deleting_instructions ->
-        binding_names = Enum.map(deleting_instructions, &binding_name(context, &1.entity))
-
-        update_meta(context, :current_traits, &Map.drop(&1, binding_names))
-    end
   end
 
   defp update_meta(context, key, callback) do
@@ -1578,24 +1288,57 @@ defmodule SeedFactory do
   end
 
   defp build_restrictions(context, entities_with_trait_names) do
-    %{
-      trait_names_by_entity: Map.new(entities_with_trait_names),
-      traits:
-        Enum.flat_map(entities_with_trait_names, fn
-          {_entity_name, []} ->
+    requested_trait_names_by_entity = Map.new(entities_with_trait_names)
+
+    subsequent_traits =
+      requested_trait_names_by_entity
+      |> Enum.flat_map(fn
+        {_entity_name, []} ->
+          []
+
+        {entity_name, required_trait_names} ->
+          %{by_name: traits_by_name} = fetch_traits!(context, entity_name)
+
+          subsequent_traits = scan_subsequent_traits(required_trait_names, traits_by_name)
+
+          if subsequent_traits == [] do
             []
-
-          {entity_name, trait_names} ->
-            %{by_name: trait_by_name} = fetch_traits!(context, entity_name)
-
-            select_traits_with_dependencies_by_names(
-              trait_names,
-              trait_by_name,
+          else
+            ensure_current_trait_names_do_not_conflict_with_required_trait_names!(
+              context,
               entity_name,
-              context.__seed_factory_meta__.trails[entity_name]
+              subsequent_traits,
+              required_trait_names
             )
-        end)
+
+            [{entity_name, subsequent_traits}]
+          end
+      end)
+      |> Map.new()
+
+    %{
+      requested_trait_names_by_entity: requested_trait_names_by_entity,
+      subsequent_traits: subsequent_traits
     }
+  end
+
+  defp scan_subsequent_traits(trait_names, traits_by_name) do
+    Enum.uniq(scan_subsequent_traits(trait_names, traits_by_name, []))
+  end
+
+  defp scan_subsequent_traits([], _traits_by_name, acc) do
+    acc
+  end
+
+  defp scan_subsequent_traits(trait_names, traits_by_name, acc) do
+    subsequent_trait_names =
+      traits_by_name
+      |> Map.take(trait_names)
+      |> Enum.flat_map(&elem(&1, 1))
+      |> Enum.flat_map(& &1.to)
+
+    acc = acc ++ subsequent_trait_names
+    scan_subsequent_traits(subsequent_trait_names, traits_by_name, acc)
   end
 
   defp maybe_map(value, map) do
@@ -1606,7 +1349,7 @@ defmodule SeedFactory do
     end
   end
 
-  defp init_requirements do
-    %{commands: %{}, unresolved_conflict_groups: []}
+  defp intersection(list1, list2) do
+    list1 -- (list1 -- list2)
   end
 end

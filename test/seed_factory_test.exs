@@ -30,8 +30,8 @@ defmodule SeedFactoryTest do
   end
 
   test "rebind unknown entity", context do
-    assert_raise ArgumentError, "Unknown entity :ofice", fn ->
-      rebind(context, [ofice: :office1], fn context ->
+    assert_raise ArgumentError, "Unknown entity :Office", fn ->
+      rebind(context, [Office: :office1], fn context ->
         exec(context, :create_office, name: "My Office #1")
       end)
     end
@@ -214,7 +214,7 @@ defmodule SeedFactoryTest do
     context
     |> produce(:email)
     |> assert_trait(:email, [:notification_about_published_project])
-    |> assert_trait(:user, [:active, :normal, :unknown_plan])
+    |> assert_trait(:user, [:active, :normal, :free_plan])
     |> assert_trait(:project, [:not_expired])
   end
 
@@ -240,7 +240,7 @@ defmodule SeedFactoryTest do
           context
           |> produce([:email, :org])
           |> assert_trait(:email, [:notification_about_published_project])
-          |> assert_trait(:user, [:active, :normal, :unknown_plan])
+          |> assert_trait(:user, [:active, :normal, :free_plan])
         end)
 
       assert diff == %{
@@ -405,29 +405,45 @@ defmodule SeedFactoryTest do
                updated: []
              }
     end
+
+    test "same traits can be applied by multiple commands", context do
+      context
+      |> produce(user: [:normal, :pending_skipped])
+      |> assert_trait(:user, [:active, :normal, :free_plan, :pending_skipped])
+
+      context
+      |> produce(user: [:pending_skipped, :normal])
+      |> assert_trait(:user, [:active, :normal, :free_plan, :pending_skipped])
+
+      context
+      |> produce([:profile, user: [:pending_skipped]])
+      |> assert_trait(:user, [:active, :normal, :free_plan, :pending_skipped])
+
+      context
+      |> produce([:profile, user: [:pending_skipped, :suspended]])
+      |> assert_trait(:user, [:suspended, :normal, :free_plan, :pending_skipped])
+
+      context
+      |> exec(:create_active_user)
+      |> assert_trait(:user, [:active, :normal, :free_plan, :pending_skipped])
+      |> produce(user: [:suspended])
+      |> assert_trait(:user, [:suspended, :normal, :free_plan, :pending_skipped])
+      |> produce(user: [:suspended, :normal, :free_plan])
+      |> assert_trait(:user, [:suspended, :normal, :free_plan, :pending_skipped])
+    end
   end
 
   test "produce entity with traits when it was already created without traits", context do
     assert_raise ArgumentError,
                  """
-                 Args to previously executed command :create_user do not match:
-                   args from previously applied traits: %{}
-                   args for specified traits: %{contacts_confirmed?: true}
+                 Traits to previously executed command :create_user do not match:
+                   previously applied traits: []
+                   specified trait: :contacts_confirmed
                  """,
                  fn ->
                    context
                    |> produce(:profile)
                    |> produce(profile: [:contacts_confirmed])
-                 end
-
-    # comparison of structs doesn't fail with
-    # (Protocol.UndefinedError) protocol Enumerable not implemented for ~D[2024-04-28] of type Date (a struct)
-    assert_raise ArgumentError,
-                 ~r"Args to previously executed command :publish_project do not match",
-                 fn ->
-                   context
-                   |> produce(project: [:expired], user: [:admin])
-                   |> produce(:virtual_file)
                  end
   end
 
@@ -436,7 +452,7 @@ defmodule SeedFactoryTest do
     context =
       context
       |> produce(email: [:notification_about_suspended_user])
-      |> assert_trait(:user, [:suspended, :normal, :unknown_plan])
+      |> assert_trait(:user, [:suspended, :normal, :free_plan])
 
     refute Map.has_key?(context, :project)
   end
@@ -548,24 +564,24 @@ defmodule SeedFactoryTest do
       |> produce(:user)
       |> assert_trait(:user, [:normal, :pending, :unknown_plan])
       |> exec(:activate_user)
-      |> assert_trait(:user, [:normal, :active, :unknown_plan])
+      |> assert_trait(:user, [:normal, :active, :free_plan])
     end
 
     test "`produce` with single trait", context do
       context
       |> produce(user: [:suspended])
-      |> assert_trait(:user, [:normal, :suspended, :unknown_plan])
+      |> assert_trait(:user, [:normal, :suspended, :free_plan])
     end
 
     test "`exec` which requires entities with traits", context do
       context
       |> exec(:suspend_user)
-      |> assert_trait(:user, [:normal, :suspended, :unknown_plan])
+      |> assert_trait(:user, [:normal, :suspended, :free_plan])
 
       context
       |> produce(user: [:admin])
       |> exec(:suspend_user)
-      |> assert_trait(:user, [:admin, :suspended, :unknown_plan])
+      |> assert_trait(:user, [:admin, :suspended, :free_plan])
     end
 
     test "`delete` instruction clears traits from meta", context do
@@ -614,7 +630,7 @@ defmodule SeedFactoryTest do
       context
       |> produce(virtual_file: [:public], user: [:admin, :active], profile: [:contacts_confirmed])
       |> assert_trait(:virtual_file, [:public])
-      |> assert_trait(:user, [:admin, :active, :unknown_plan])
+      |> assert_trait(:user, [:admin, :active, :free_plan])
       |> assert_trait(:profile, [:contacts_confirmed])
 
       context
@@ -623,7 +639,7 @@ defmodule SeedFactoryTest do
       |> assert_trait(:profile, [:contacts_confirmed])
       |> produce(virtual_file: [:public], user: [:active])
       |> assert_trait(:virtual_file, [:public])
-      |> assert_trait(:user, [:admin, :active, :unknown_plan])
+      |> assert_trait(:user, [:admin, :active, :free_plan])
     end
 
     test "different conflict groups of the same command merge into 1 which is smaller", context do
@@ -674,15 +690,37 @@ defmodule SeedFactoryTest do
     test "specify traits which conflict with previously applied traits", context do
       assert_raise ArgumentError,
                    """
-                   Args to previously executed command :create_user do not match:
-                     args from previously applied traits: %{role: :admin}
-                     args for specified traits: %{role: :normal}
+                   Traits to previously executed command :create_user do not match:
+                     previously applied traits: [:unknown_plan, :admin, :pending]
+                     specified trait: :normal
                    """,
                    fn ->
                      context
                      |> produce(user: [:admin])
                      |> assert_trait(:user, [:admin, :pending, :unknown_plan])
                      |> produce(user: [:normal])
+                   end
+
+      assert_raise ArgumentError,
+                   """
+                   Traits to previously executed command :publish_project do not match:
+                     previously applied traits: [:expired]
+                     trait required by :create_virtual_file command: :not_expired
+                   """,
+                   fn ->
+                     context
+                     |> produce(project: [:expired], user: [:admin])
+                     |> produce(:virtual_file)
+                   end
+    end
+
+    test "commands that remove entities should be executed at the end", context do
+      # it is important, that :publish_project command is executed before :suspend_user, so we have expected error
+      # and not "Cannot put entity :email to the context while executing :publish_project: key :email already exists"
+      assert_raise ArgumentError,
+                   "Cannot put entity :email to the context while executing :suspend_user: key :email already exists",
+                   fn ->
+                     produce(context, [:project, user: [:suspended]])
                    end
     end
 
@@ -703,21 +741,33 @@ defmodule SeedFactoryTest do
       # in order to :activate user, we execute :activate_user command to move user from :pending to :active status
       assert_raise ArgumentError,
                    """
-                   Cannot apply trait :active to entity :user.
-                   The entity was requested with the following traits: [:pending]
+                   Cannot apply traits [:active] to :user as a requirement for :publish_project command.
+                   The entity was requested with the following traits: [:pending, :admin].
                    """,
                    fn ->
-                     produce(context, [:project, user: [:pending]])
+                     produce(context, [:project, user: [:pending, :admin]])
                    end
 
       assert_raise ArgumentError,
                    """
-                   Cannot apply traits [:pending] to entity :user.
-                   The entity already exists with traits that depend on requested ones.
+                   Cannot apply traits [:pending] to :user1 because they were removed by the command :activate_user.
+                   Current traits: [:normal, :free_plan, :active].
                    """,
                    fn ->
                      context
-                     |> produce(:project)
+                     |> produce([:project, user: :user1])
+                     |> produce(user: [:pending, as: :user1])
+                   end
+
+      assert_raise ArgumentError,
+                   """
+                   Cannot apply traits [:pending] to :user.
+                   There is no path from traits [:active].
+                   Current traits: [:free_plan, :normal, :pending_skipped, :active].
+                   """,
+                   fn ->
+                     context
+                     |> exec(:create_active_user)
                      |> produce(user: [:pending])
                    end
     end
@@ -827,6 +877,13 @@ defmodule SeedFactoryTest do
       end)
 
     assert diff == %{added: [], deleted: [], updated: []}
+
+    {_context, diff} =
+      with_diff(context, fn ->
+        pre_exec(context, :activate_user)
+      end)
+
+    assert diff == %{added: [:office, :org, :profile, :user], deleted: [], updated: []}
   end
 
   test "pre_produce", context do
@@ -842,7 +899,7 @@ defmodule SeedFactoryTest do
         pre_produce(context, user: [:active])
       end)
 
-    assert diff == %{added: [:office, :org, :profile, :user], deleted: [], updated: []}
+    assert diff == %{added: [:office, :org], deleted: [], updated: []}
 
     {_context, diff} =
       with_diff(context, fn ->
@@ -889,7 +946,10 @@ defmodule SeedFactoryTest do
     assert Map.has_key?(context, binding_name),
            "No produced entity bound to #{inspect(binding_name)}"
 
-    current_traits = Map.fetch!(context.__seed_factory_meta__.current_traits, binding_name)
+    current_traits =
+      Map.get(context.__seed_factory_meta__.current_traits, binding_name) ||
+        raise "No tracked traits for #{inspect(binding_name)}"
+
     assert Enum.sort(expected_traits) == Enum.sort(current_traits)
 
     context

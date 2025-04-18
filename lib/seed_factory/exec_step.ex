@@ -1,5 +1,7 @@
 defmodule SeedFactory.ExecStep do
   @moduledoc false
+  @derive {Inspect, optional: [:args_pattern, :args_match, :generate_args]}
+
   defstruct [
     :command_name,
     :args_pattern,
