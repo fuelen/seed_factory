@@ -514,13 +514,29 @@ defmodule SeedFactoryTest do
                  end
   end
 
-  test "double execution of the same command", context do
+  test "double execution of the same command - don't report current traits for entities without traits",
+       context do
     assert_raise ArgumentError,
-                 "Cannot put entity :org to the context while executing :create_org: key :org already exists",
+                 "Cannot put entity :org to the context while executing :create_org: key :org already exists.",
                  fn ->
                    context
                    |> exec(:create_org)
                    |> exec(:create_org)
+                 end
+  end
+
+  test "double execution of the same command - report current traits for entities with traits",
+       context do
+    assert_raise ArgumentError,
+                 """
+                 Cannot put entity :task to the context while executing :create_task: key :task already exists.
+
+                 Current :task traits: [:todo]
+                 """,
+                 fn ->
+                   context
+                   |> exec(:create_task)
+                   |> exec(:create_task)
                  end
   end
 
@@ -718,7 +734,11 @@ defmodule SeedFactoryTest do
       # it is important, that :publish_project command is executed before :suspend_user, so we have expected error
       # and not "Cannot put entity :email to the context while executing :publish_project: key :email already exists"
       assert_raise ArgumentError,
-                   "Cannot put entity :email to the context while executing :suspend_user: key :email already exists",
+                   """
+                   Cannot put entity :email to the context while executing :suspend_user: key :email already exists.
+
+                   Current :email traits: [:notification_about_published_project]
+                   """,
                    fn ->
                      produce(context, [:project, user: [:suspended]])
                    end
@@ -769,6 +789,21 @@ defmodule SeedFactoryTest do
                      context
                      |> exec(:create_active_user)
                      |> produce(user: [:pending])
+                   end
+    end
+
+    test "raise a meaningful error when produced entity has been already produced by another command",
+         context do
+      assert_raise ArgumentError,
+                   """
+                   Cannot put entity :email to the context while executing :publish_project: key :email already exists.
+
+                   Current :email traits: [:notification_about_suspended_user]
+                   """,
+                   fn ->
+                     context
+                     |> produce(user: [:suspended])
+                     |> produce(:project)
                    end
     end
 

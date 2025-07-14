@@ -409,10 +409,19 @@ defmodule SeedFactory do
     end)
   end
 
+  # maybe, it would make sense to take updating_instructions into account as well,
+  # but for now, I don't know any use case for that. The new function name could be something like command_was_executed?
   defp anything_was_produced_by_command?(context, command) do
     Enum.any?(command.producing_instructions, fn instruction ->
       binding_name = binding_name(context, instruction.entity)
-      Map.has_key?(context, binding_name)
+
+      case context.__seed_factory_meta__.trails[binding_name] do
+        nil ->
+          false
+
+        %{produced_by: {produced_by_command_name, _, _}} ->
+          command.name == produced_by_command_name
+      end
     end)
   end
 
@@ -805,13 +814,13 @@ defmodule SeedFactory do
   end
 
   defp collect_requirements_for_traits(
-        acc,
-        trait_names,
-        traits_by_name,
-        entity_name,
-        trail_map,
-        required_by
-      ) do
+         acc,
+         trait_names,
+         traits_by_name,
+         entity_name,
+         trail_map,
+         required_by
+       ) do
     Enum.reduce(trait_names, acc, fn trait_name, acc ->
       case Map.fetch(traits_by_name, trait_name) do
         {:ok, traits} ->
@@ -825,12 +834,12 @@ defmodule SeedFactory do
   end
 
   defp do_collect_requirements_for_traits(
-        {requirements, command_names} = acc,
-        traits,
-        traits_by_name,
-        trail_map,
-        required_by
-      ) do
+         {requirements, command_names} = acc,
+         traits,
+         traits_by_name,
+         trail_map,
+         required_by
+       ) do
     Enum.find_value(traits, fn trait ->
       case trail_map[trait.exec_step.command_name] do
         nil -> nil
@@ -1189,7 +1198,16 @@ defmodule SeedFactory do
 
       if Map.has_key?(context, binding_name) do
         message =
-          "Cannot put entity #{inspect(entity_name)} to the context while executing #{inspect(command.name)}: key #{inspect(binding_name)} already exists"
+          "Cannot put entity #{inspect(entity_name)} to the context while executing #{inspect(command.name)}: key #{inspect(binding_name)} already exists."
+
+        message =
+          case context.__seed_factory_meta__.current_traits[binding_name] || [] do
+            [] ->
+              message
+
+            current_traits ->
+              "#{message}\n\nCurrent #{inspect(binding_name)} traits: #{inspect(current_traits)}\n"
+          end
 
         raise ArgumentError, message
       else

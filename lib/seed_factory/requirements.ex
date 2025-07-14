@@ -479,7 +479,8 @@ defmodule SeedFactory.Requirements do
           end)
         end)
 
-      command_names_to_link = command_names_that_delete_entities ++ command_names_that_remove_traits
+      command_names_to_link =
+        command_names_that_delete_entities ++ command_names_that_remove_traits
 
       link_commands(requirements, command_names_to_link, command_name, [])
     end)

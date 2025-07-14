@@ -16,7 +16,7 @@ defmodule SeedFactory.Trail do
   def to_map(%__MODULE__{produced_by: produced_by, updated_by: updated_by}) do
     Map.new([produced_by | updated_by], fn
       {action, added, removed} ->
-      {action, %{added: added, removed: removed}}
+        {action, %{added: added, removed: removed}}
     end)
   end
 
