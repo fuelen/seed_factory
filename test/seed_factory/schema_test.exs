@@ -18,11 +18,11 @@ defmodule SeedFactory.SchemaTest do
     ],
     office: [:create_office],
     org: [:create_org],
-    profile: [:create_user, :create_active_user],
+    profile: [:create_pending_user, :create_active_user],
     project: [:publish_project],
     proposal: [:add_proposal_v1, :add_proposal_v2],
     task: [:create_task],
-    user: [:create_user, :create_active_user],
+    user: [:create_pending_user, :create_active_user],
     virtual_file: [:create_virtual_file]
   }
 
@@ -466,9 +466,9 @@ defmodule SeedFactory.SchemaTest do
                resolve: &SchemaExample.resolve_0_generated_0D507D35A926192FD24E8ADD63391E2D/1,
                updating_instructions: []
              },
-             create_user: %SeedFactory.Command{
+             create_pending_user: %SeedFactory.Command{
                deleting_instructions: [],
-               name: :create_user,
+               name: :create_pending_user,
                params: %{
                  contacts_confirmed?: %SeedFactory.Parameter{
                    entity: nil,

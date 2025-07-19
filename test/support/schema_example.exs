@@ -177,8 +177,7 @@ defmodule SchemaExample do
     update :email
   end
 
-  # TODO: rename create_user to create_pending_user
-  command :create_user do
+  command :create_pending_user do
     param :name, generate: &random_string/0
     param :role, value: :normal
     param :contacts_confirmed?, value: false
@@ -352,7 +351,7 @@ defmodule SchemaExample do
   end
 
   trait :pending, :user do
-    exec :create_user
+    exec :create_pending_user
   end
 
   trait :active, :user do
@@ -374,11 +373,11 @@ defmodule SchemaExample do
   end
 
   trait :normal, :user do
-    exec :create_user, args_pattern: %{role: :normal}
+    exec :create_pending_user, args_pattern: %{role: :normal}
   end
 
   trait :admin, :user do
-    exec :create_user, args_pattern: %{role: :admin}
+    exec :create_pending_user, args_pattern: %{role: :admin}
   end
 
   trait :normal, :user do
@@ -390,11 +389,11 @@ defmodule SchemaExample do
   end
 
   trait :unknown_plan, :user do
-    exec :create_user
+    exec :create_pending_user
   end
 
   trait :contacts_confirmed, :profile do
-    exec :create_user, args_pattern: %{contacts_confirmed?: true}
+    exec :create_pending_user, args_pattern: %{contacts_confirmed?: true}
   end
 
   trait :public, :virtual_file do
