@@ -848,6 +848,12 @@ defmodule SeedFactoryTest do
       assert_raise ArgumentError, "Entity :user doesn't have trait :something", fn ->
         produce(context, user: [:something])
       end
+
+      assert_raise ArgumentError, "Entity :user doesn't have trait :something", fn ->
+        context
+        |> produce(user: [:pending])
+        |> produce(user: [:something])
+      end
     end
 
     test "multiple traits which use the same parameter of the entity", context do
