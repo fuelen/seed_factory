@@ -1095,49 +1095,41 @@ defmodule SeedFactory do
     List.wrap(context.__seed_factory_meta__.traits[entity_name][:by_command_name][command_name])
   end
 
-  defp sync_current_traits(current_traits, binding_name, added_traits, removed_traits) do
-    current_trait_names = current_traits[binding_name] || []
-    new_trait_names = (current_trait_names -- removed_traits) ++ added_traits
-    Map.put(current_traits, binding_name, new_trait_names)
-  end
-
   defp store_trails_and_sync_current_traits(context, command, args) do
     context =
       Enum.reduce(command.producing_instructions, context, fn instruction, context ->
         binding_name = binding_name(context, instruction.entity)
 
-        {added_traits, removed_traits} =
+        {added_traits, []} =
           context |> possible_traits(instruction.entity, command.name) |> traits_diff(args)
 
-        trail = SeedFactory.Trail.new({command.name, added_traits, removed_traits})
+        trail = SeedFactory.Trail.new({command.name, added_traits, []})
 
         context
         |> update_meta(:trails, &Map.put(&1, binding_name, trail))
-        |> update_meta(
-          :current_traits,
-          &sync_current_traits(&1, binding_name, added_traits, removed_traits)
-        )
+        |> update_meta(:current_traits, &Map.put(&1, binding_name, added_traits))
       end)
 
     context =
       Enum.reduce(command.updating_instructions, context, fn instruction, context ->
         binding_name = binding_name(context, instruction.entity)
+        current_trait_names = current_trait_names(context, binding_name)
 
-        {added_traits, removed_traits} =
+        {traits_to_add, traits_to_remove} =
           context |> possible_traits(instruction.entity, command.name) |> traits_diff(args)
+
+        traits_to_remove = intersection(current_trait_names, traits_to_remove)
+        new_trait_names = (current_trait_names -- traits_to_remove) ++ traits_to_add
 
         context
         |> update_meta(:trails, fn trails ->
           Map.update!(
             trails,
             binding_name,
-            &SeedFactory.Trail.add_updated_by(&1, {command.name, added_traits, removed_traits})
+            &SeedFactory.Trail.add_updated_by(&1, {command.name, traits_to_add, traits_to_remove})
           )
         end)
-        |> update_meta(
-          :current_traits,
-          &sync_current_traits(&1, binding_name, added_traits, removed_traits)
-        )
+        |> update_meta(:current_traits, &Map.put(&1, binding_name, new_trait_names))
       end)
 
     case command.deleting_instructions do
