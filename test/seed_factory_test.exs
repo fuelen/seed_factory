@@ -406,6 +406,18 @@ defmodule SeedFactoryTest do
              }
     end
 
+    test "rejecting commands during collecting traits", context do
+      input = [:profile, user: [:pending_skipped, :suspended]]
+
+      context
+      |> produce(input)
+      |> assert_trait(:user, [:suspended, :normal, :free_plan, :pending_skipped])
+
+      context
+      |> produce(Enum.reverse(input))
+      |> assert_trait(:user, [:suspended, :normal, :free_plan, :pending_skipped])
+    end
+
     test "same traits can be applied by multiple commands", context do
       context
       |> produce(user: [:normal, :pending_skipped])

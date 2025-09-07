@@ -547,29 +547,13 @@ defmodule SeedFactory do
                   []
                 )
 
-              trait_names
-              |> Enum.reduce(
+              collect_requirements_for_traits(
                 {requirements, MapSet.union(command_names, added_command_names)},
-                fn trait_name, {requirements, command_names} ->
-                  case Map.fetch(traits_by_name, trait_name) do
-                    {:ok, traits} ->
-                      command_names_to_add = Enum.map(traits, & &1.exec_step.command_name)
-
-                      {requirements, added_command_names} =
-                        add_commands_to_requirements(
-                          requirements,
-                          command_names_to_add,
-                          required_by,
-                          traits
-                        )
-
-                      {requirements, MapSet.union(command_names, MapSet.new(added_command_names))}
-
-                    :error ->
-                      raise ArgumentError,
-                            "Entity #{inspect(entity_name)} doesn't have trait #{inspect(trait_name)}"
-                  end
-                end
+                trait_names,
+                traits_by_name,
+                entity_name,
+                %{},
+                required_by
               )
             end
           end
@@ -713,7 +697,8 @@ defmodule SeedFactory do
      ), MapSet.new([command_name])}
   end
 
-  defp add_commands_to_requirements(requirements, command_names, required_by, traits) do
+  defp add_commands_to_requirements(requirements, command_names, required_by, traits)
+       when command_names != [] do
     # if the command can be found in requirements, and it doesn't have any conflict, it means, that it was requested
     # without ambiguity, so we can skip conflict resolution for the command
     case Enum.find(
@@ -824,7 +809,16 @@ defmodule SeedFactory do
     Enum.reduce(trait_names, acc, fn trait_name, acc ->
       case Map.fetch(traits_by_name, trait_name) do
         {:ok, traits} ->
-          do_collect_requirements_for_traits(acc, traits, traits_by_name, trail_map, required_by)
+          {:ok, acc} =
+            do_collect_requirements_for_traits(
+              acc,
+              traits,
+              traits_by_name,
+              trail_map,
+              required_by
+            )
+
+          acc
 
         :error ->
           raise ArgumentError,
@@ -840,77 +834,98 @@ defmodule SeedFactory do
          trail_map,
          required_by
        ) do
-    Enum.find_value(traits, fn trait ->
-      case trail_map[trait.exec_step.command_name] do
-        nil -> nil
-        data -> {trait, data}
-      end
-    end)
-    |> case do
-      nil ->
-        {requirements, added_command_names} =
-          add_commands_to_requirements(
-            requirements,
-            Enum.map(traits, & &1.exec_step.command_name),
-            required_by,
-            traits
-          )
+    case Enum.reject(traits, fn trait ->
+           trait.exec_step.command_name in requirements.rejected_commands
+         end) do
+      [] ->
+        {:error, :rejected}
 
-        acc = {requirements, MapSet.union(command_names, added_command_names)}
-
-        Enum.reduce(traits, acc, fn trait, acc ->
-          case trait.from do
-            nil ->
-              acc
-
-            from when is_atom(from) ->
-              do_collect_requirements_for_traits(
-                acc,
-                traits_by_name[from],
-                traits_by_name,
-                trail_map,
-                required_by
-              )
-
-            from_any_of when is_list(from_any_of) ->
-              if Enum.any?(from_any_of, fn from ->
-                   traits = traits_by_name[from]
-
-                   Enum.any?(traits, fn trait ->
-                     data = trail_map[trait.exec_step.command_name]
-                     data && trait.name in data.added
-                   end)
-                 end) do
-                acc
-              else
-                from = hd(from_any_of)
-
-                do_collect_requirements_for_traits(
-                  acc,
-                  traits_by_name[from],
-                  traits_by_name,
-                  trail_map,
-                  required_by
-                )
-              end
+      traits ->
+        Enum.find_value(traits, fn trait ->
+          case trail_map[trait.exec_step.command_name] do
+            nil -> nil
+            data -> {trait, data}
           end
         end)
+        |> case do
+          nil ->
+            {requirements, added_command_names} =
+              add_commands_to_requirements(
+                requirements,
+                Enum.map(traits, & &1.exec_step.command_name),
+                required_by,
+                traits
+              )
 
-      {trait, %{added: added}} ->
-        if trait.name in added do
-          acc
-        else
-          label =
-            case required_by do
-              nil -> "specified trait"
-              command_name -> "trait required by #{inspect(command_name)} command"
+            add_commands_acc = {requirements, MapSet.union(command_names, added_command_names)}
+
+            {add_commands_acc, collected_traits} =
+              Enum.reduce(traits, {add_commands_acc, []}, fn trait,
+                                                             {add_commands_acc, collected_traits} ->
+                result =
+                  case trait.from do
+                    nil ->
+                      {:ok, add_commands_acc}
+
+                    from when is_atom(from) ->
+                      do_collect_requirements_for_traits(
+                        add_commands_acc,
+                        traits_by_name[from],
+                        traits_by_name,
+                        trail_map,
+                        required_by
+                      )
+
+                    from_any_of when is_list(from_any_of) ->
+                      if Enum.any?(from_any_of, fn from ->
+                           traits = traits_by_name[from]
+
+                           Enum.any?(traits, fn trait ->
+                             data = trail_map[trait.exec_step.command_name]
+                             data && trait.name in data.added
+                           end)
+                         end) do
+                        {:ok, add_commands_acc}
+                      else
+                        from = hd(from_any_of)
+
+                        do_collect_requirements_for_traits(
+                          add_commands_acc,
+                          traits_by_name[from],
+                          traits_by_name,
+                          trail_map,
+                          required_by
+                        )
+                      end
+                  end
+
+                case result do
+                  {:ok, add_commands_acc} -> {add_commands_acc, [trait | collected_traits]}
+                  {:error, :rejected} -> {add_commands_acc, collected_traits}
+                end
+              end)
+
+            case collected_traits do
+              [] -> {:error, :rejected}
+              _ -> {:ok, add_commands_acc}
             end
 
-          raise ArgumentError, """
-          Traits to previously executed command #{inspect(trait.exec_step.command_name)} do not match:
-            previously applied traits: #{inspect(added)}
-            #{label}: #{inspect(trait.name)}
-          """
+          {trait, %{added: added}} ->
+            if trait.name in added do
+              {:ok, acc}
+            else
+              label =
+                case required_by do
+                  nil -> "specified trait"
+                  command_name -> "trait required by #{inspect(command_name)} command"
+                end
+
+              raise ArgumentError, """
+              Traits to previously executed command #{inspect(trait.exec_step.command_name)} do not match:
+                previously applied traits: #{inspect(added)}
+                #{label}: #{inspect(trait.name)}
+              """
+            end
         end
     end
   end

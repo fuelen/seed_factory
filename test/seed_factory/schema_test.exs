@@ -856,6 +856,28 @@ defmodule SeedFactory.SchemaTest do
                updating_instructions: [
                  %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
                ]
+             },
+             move_task_to_in_review: %SeedFactory.Command{
+               name: :move_task_to_in_review,
+               resolve: &SchemaExample.resolve_0_generated_E21006AE7D1E787A2A1984B2F53F852C/1,
+               params: %{
+                 task: %SeedFactory.Parameter{
+                   name: :task,
+                   type: :entity,
+                   value: nil,
+                   map: nil,
+                   generate: nil,
+                   params: %{},
+                   entity: :task,
+                   with_traits: nil
+                 }
+               },
+               producing_instructions: [],
+               updating_instructions: [
+                 %SeedFactory.UpdatingInstruction{entity: :task, from: :task}
+               ],
+               deleting_instructions: [],
+               required_entities: %{task: MapSet.new([])}
              }
            }
   end

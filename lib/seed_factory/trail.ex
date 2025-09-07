@@ -40,17 +40,10 @@ defmodule SeedFactory.Trail do
           {action, added, removed} ->
             action_doc = color(Atom.to_string(action), :atom, opts)
 
-            added_doc =
-              case added do
-                [] ->
-                  nil
+            plus =
+              if syntax_colors?, do: IO.ANSI.green() <> "+" <> IO.ANSI.reset(), else: "+"
 
-                _ ->
-                  plus =
-                    if syntax_colors?, do: IO.ANSI.green() <> "+" <> IO.ANSI.reset(), else: "+"
-
-                  concat([plus, to_doc(added, opts)])
-              end
+            added_doc = concat([plus, to_doc(added, opts)])
 
             removed_doc =
               case removed do

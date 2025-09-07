@@ -538,6 +538,16 @@ defmodule SchemaExample do
     update :task
   end
 
+  command :move_task_to_in_review do
+    param :task, entity: :task
+
+    resolve(fn args ->
+      {:ok, %{task: %{args.task | status: :in_review}}}
+    end)
+
+    update :task
+  end
+
   command :complete_task do
     param :task, entity: :task
 
@@ -558,7 +568,12 @@ defmodule SchemaExample do
   end
 
   trait :completed, :task do
-    from [:todo, :in_progress]
+    from [:in_progress, :in_review]
     exec :complete_task
+  end
+
+  trait :in_review, :task do
+    from :in_progress
+    exec :move_task_to_in_review
   end
 end

@@ -51,7 +51,7 @@ defmodule SeedFactory.Requirements do
     end
   end
 
-  defstruct commands: %{}, unresolved_conflict_groups: []
+  defstruct commands: %{}, unresolved_conflict_groups: [], rejected_commands: []
 
   def init do
     %__MODULE__{}
@@ -76,7 +76,11 @@ defmodule SeedFactory.Requirements do
       |> Map.delete(command_name)
       |> unrequire_command_names(command_name, Map.keys(command.required_by))
 
-    requirements = %{requirements | commands: commands}
+    requirements = %{
+      requirements
+      | commands: commands,
+        rejected_commands: [command_name | requirements.rejected_commands]
+    }
 
     requirements =
       remove_command_name_from_conflict_groups_if_present(
@@ -162,7 +166,11 @@ defmodule SeedFactory.Requirements do
             Map.update!(commands, command_name, update_command)
           end)
 
-        %__MODULE__{commands: commands, unresolved_conflict_groups: unresolved_conflict_groups}
+        %{
+          requirements
+          | commands: commands,
+            unresolved_conflict_groups: unresolved_conflict_groups
+        }
       end
     end)
   end
