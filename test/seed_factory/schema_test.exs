@@ -887,13 +887,13 @@ defmodule SeedFactory.SchemaTest do
       assert_raise(
         Spark.Error.DslError,
         """
-        [SeedFactory.SchemaTest.MySchema1]
+        [SeedFactory.SchemaTest.MySchema]
         root -> command -> action1:
           required :resolve option not found, received options: [:name]
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema1 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             command :action1 do
@@ -907,13 +907,13 @@ defmodule SeedFactory.SchemaTest do
       assert_raise(
         Spark.Error.DslError,
         """
-        [SeedFactory.SchemaTest.MySchema2]
+        [SeedFactory.SchemaTest.MySchema]
         root -> command -> action1:
           duplicated command name
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema2 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             command :action1 do
@@ -942,7 +942,7 @@ defmodule SeedFactory.SchemaTest do
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema4 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             command :action1 do
@@ -956,14 +956,14 @@ defmodule SeedFactory.SchemaTest do
     test "cyclic dependency with multiple commands" do
       prefix =
         Regex.escape(
-          "[SeedFactory.SchemaTest.MySchema5]\nroot:\n  found dependency cycles:\n  * "
+          "[SeedFactory.SchemaTest.MySchema]\nroot:\n  found dependency cycles:\n  * "
         )
 
       assert_raise(
         Spark.Error.DslError,
         ~r"#{prefix}((:create_user - :create_org - :create_project)|(:create_project - :create_user - :create_org)|(:create_org - :create_project - :create_user))$",
         fn ->
-          defmodule MySchema5 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             command :create_user do
@@ -1006,14 +1006,14 @@ defmodule SeedFactory.SchemaTest do
       assert_raise(
         Spark.Error.DslError,
         """
-        [SeedFactory.SchemaTest.MySchema6]
+        [SeedFactory.SchemaTest.MySchema]
         root:
           found dependency cycles:
           * :create_user
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema6 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             command :create_user do
@@ -1031,13 +1031,13 @@ defmodule SeedFactory.SchemaTest do
       assert_raise(
         Spark.Error.DslError,
         """
-        [SeedFactory.SchemaTest.MySchema7]
+        [SeedFactory.SchemaTest.MySchema]
         root -> trait -> pending -> user:
           duplicated trait
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema7 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             command :create_user do
@@ -1068,7 +1068,7 @@ defmodule SeedFactory.SchemaTest do
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema8 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             command :create_user do
@@ -1091,7 +1091,7 @@ defmodule SeedFactory.SchemaTest do
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema9 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             command :create_user do
@@ -1110,13 +1110,13 @@ defmodule SeedFactory.SchemaTest do
       assert_raise(
         Spark.Error.DslError,
         """
-        [SeedFactory.SchemaTest.MySchema10]
+        [SeedFactory.SchemaTest.MySchema]
         root -> trait -> pending -> user:
           contains an exec step to the :create_org command which neither produces nor updates the :user entity
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema10 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             command :create_org do
@@ -1144,13 +1144,13 @@ defmodule SeedFactory.SchemaTest do
       assert_raise(
         Spark.Error.DslError,
         """
-        [SeedFactory.SchemaTest.MySchema11]
+        [SeedFactory.SchemaTest.MySchema]
         root -> trait -> pending -> org:
           unknown command :create_new_org
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema11 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             command :create_org do
@@ -1171,13 +1171,13 @@ defmodule SeedFactory.SchemaTest do
       assert_raise(
         Spark.Error.DslError,
         """
-        [SeedFactory.SchemaTest.MySchema12]
+        [SeedFactory.SchemaTest.MySchema]
         root -> trait -> pending -> unknown:
           unknown entity
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema12 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             trait :pending, :unknown do
@@ -1188,17 +1188,44 @@ defmodule SeedFactory.SchemaTest do
       )
     end
 
+    test "defining trait transition with empty from list" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> invalid -> user:
+          :from option cannot be an empty list
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_user do
+              resolve(fn _ -> {:ok, %{user: %{id: 1}}} end)
+              produce :user
+            end
+
+            trait :invalid, :user do
+              from []
+              exec :create_user
+            end
+          end
+        end
+      )
+    end
+
     test "args_match is present without generate_arg" do
       assert_raise(
         Spark.Error.DslError,
         """
-        [SeedFactory.SchemaTest.MySchema13]
+        [SeedFactory.SchemaTest.MySchema]
         root -> exec:
           Option generate_args is required when args_match is specified
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema13 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             trait :pending, :unknown do
@@ -1213,13 +1240,13 @@ defmodule SeedFactory.SchemaTest do
       assert_raise(
         Spark.Error.DslError,
         """
-        [SeedFactory.SchemaTest.MySchema14]
+        [SeedFactory.SchemaTest.MySchema]
         root -> exec:
           Option args_match is required when generate_args` is specified
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema14 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             trait :pending, :unknown do
@@ -1234,13 +1261,13 @@ defmodule SeedFactory.SchemaTest do
       assert_raise(
         Spark.Error.DslError,
         """
-        [SeedFactory.SchemaTest.MySchema15]
+        [SeedFactory.SchemaTest.MySchema]
         root -> exec:
           Option args_pattern cannot be used with generate_args and args_match options
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema15 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             trait :pending, :unknown do
@@ -1255,13 +1282,13 @@ defmodule SeedFactory.SchemaTest do
       assert_raise(
         Spark.Error.DslError,
         """
-        [SeedFactory.SchemaTest.MySchema16]
+        [SeedFactory.SchemaTest.MySchema]
         root -> exec:
           Option args_pattern cannot be used with generate_args and args_match options
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema16 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             trait :pending, :unknown do
@@ -1282,7 +1309,7 @@ defmodule SeedFactory.SchemaTest do
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema17 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             command nil do
@@ -1297,18 +1324,87 @@ defmodule SeedFactory.SchemaTest do
       assert_raise(
         Spark.Error.DslError,
         """
-        [SeedFactory.SchemaTest.MySchema18]
+        [SeedFactory.SchemaTest.MySchema]
         root -> param -> author:
           :with_traits option can be used only if entity is specified
         """
         |> String.trim_trailing(),
         fn ->
-          defmodule MySchema18 do
+          defmodule MySchema do
             use SeedFactory.Schema
 
             command :create_project do
               param :author, with_traits: [:active]
               resolve(fn _ -> {:ok, %{}} end)
+            end
+          end
+        end
+      )
+    end
+  end
+
+  describe "trait transition validation" do
+    test "raises when transition trait reuses a producing command" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> invalid_transition -> thing:
+          trait references :create_thing via `from`, but the command produces the :thing entity. Transitions must update existing entities.
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_thing do
+              resolve(fn _ -> {:ok, %{thing: %{id: 1}}} end)
+              produce :thing
+            end
+
+            trait :initial, :thing do
+              exec :create_thing
+            end
+
+            trait :invalid_transition, :thing do
+              from :initial
+              exec :create_thing
+            end
+          end
+        end
+      )
+    end
+
+    test "raises when transition trait uses a command that does not update the entity" do
+      assert_raise(
+        Spark.Error.DslError,
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> invalid_transition -> thing:
+          trait references :touch_thing via `from`, but the command does not update the :thing entity.
+        """
+        |> String.trim_trailing(),
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_thing do
+              resolve(fn _ -> {:ok, %{thing: %{id: 1}}} end)
+              produce :thing
+            end
+
+            command :touch_thing do
+              resolve(fn _ -> {:ok, %{}} end)
+              delete :thing
+            end
+
+            trait :initial, :thing do
+              exec :create_thing
+            end
+
+            trait :invalid_transition, :thing do
+              from :initial
+              exec :touch_thing
             end
           end
         end

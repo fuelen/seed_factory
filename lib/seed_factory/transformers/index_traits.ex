@@ -57,30 +57,60 @@ defmodule SeedFactory.Transformers.IndexTraits do
   defp ensure_traits_have_valid_commands(entity, traits, dsl_state) do
     command_by_name = Spark.Dsl.Transformer.get_persisted(dsl_state, :commands)
 
-    case Enum.find(traits, fn trait ->
-           command =
-             case Map.fetch(command_by_name, trait.exec_step.command_name) do
-               {:ok, command} ->
-                 command
+    Enum.each(traits, fn trait ->
+      command =
+        case Map.fetch(command_by_name, trait.exec_step.command_name) do
+          {:ok, command} ->
+            command
 
-               :error ->
-                 raise Spark.Error.DslError,
-                   path: [:root, :trait, trait.name, entity],
-                   message: "unknown command #{inspect(trait.exec_step.command_name)}"
-             end
+          :error ->
+            raise Spark.Error.DslError,
+              path: [:root, :trait, trait.name, entity],
+              message: "unknown command #{inspect(trait.exec_step.command_name)}"
+        end
 
-           instructions = command.producing_instructions ++ command.updating_instructions
-           not Enum.any?(instructions, &(&1.entity == entity))
-         end) do
-      nil ->
-        :ok
+      if trait.from == [] do
+        raise Spark.Error.DslError,
+          path: [:root, :trait, trait.name, entity],
+          message: ":from option cannot be an empty list"
+      end
 
-      trait ->
+      transition? = not is_nil(trait.from)
+
+      if transition? do
+        produces_entity? =
+          Enum.any?(command.producing_instructions, &(&1.entity == entity))
+
+        updates_entity? =
+          Enum.any?(command.updating_instructions, &(&1.entity == entity))
+
+        cond do
+          produces_entity? ->
+            raise Spark.Error.DslError,
+              path: [:root, :trait, trait.name, entity],
+              message:
+                "trait references #{inspect(command.name)} via `from`, but the command produces the #{inspect(entity)} entity. Transitions must update existing entities."
+
+          not updates_entity? ->
+            raise Spark.Error.DslError,
+              path: [:root, :trait, trait.name, entity],
+              message:
+                "trait references #{inspect(command.name)} via `from`, but the command does not update the #{inspect(entity)} entity."
+
+          true ->
+            :ok
+        end
+      end
+
+      instructions = command.producing_instructions ++ command.updating_instructions
+
+      unless Enum.any?(instructions, &(&1.entity == entity)) do
         raise Spark.Error.DslError,
           path: [:root, :trait, trait.name, entity],
           message:
             "contains an exec step to the #{inspect(trait.exec_step.command_name)} command which neither produces nor updates the #{inspect(entity)} entity"
-    end
+      end
+    end)
   end
 
   defp ensure_unique_names(traits, entity) do
