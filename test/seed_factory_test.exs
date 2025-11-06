@@ -995,6 +995,155 @@ defmodule SeedFactoryTest do
     end
   end
 
+  describe "trait argument merging" do
+    test "skips merging when accumulator already satisfies trait", context do
+      context =
+        context
+        |> SeedFactory.produce(project_quota: [:basic_project_quota, :trial_project_quota])
+
+      assert %{project_quota: %{daily_limit: limit}} = context
+      assert limit in [400, 600]
+
+      assert context.__seed_factory_meta__.current_traits[:project_quota]
+             |> Enum.sort() == [:basic_project_quota, :trial_project_quota]
+    end
+  end
+
+  describe "requirements rejection" do
+    test "skips traits backed by rejected commands while collecting requirements" do
+      context =
+        %{}
+        |> SeedFactory.init(SchemaExample)
+        |> SeedFactory.produce(user: [:pending_skipped, :active])
+
+      assert %SchemaExample.User{status: :active} = context.user
+
+      meta = context.__seed_factory_meta__
+      current_traits = Map.get(meta.current_traits, :user, [])
+
+      assert :active in current_traits
+      assert :pending_skipped in current_traits
+      refute :pending in current_traits
+
+      trail_commands =
+        meta.trails[:user]
+        |> SeedFactory.Trail.to_list()
+        |> Enum.map(&elem(&1, 0))
+
+      assert :create_active_user in trail_commands
+      refute :create_pending_user in trail_commands
+    end
+
+    test "raises when conflicting traits rely on rejected commands" do
+      expected =
+        """
+        Cannot satisfy trait :production_ready for entity :integration_pipeline (requested trait).
+        - Candidate command :bootstrap_production_pipeline was previously rejected during conflict resolution.
+        """
+        |> String.trim_trailing()
+
+      assert_raise(ArgumentError, expected, fn ->
+        %{}
+        |> SeedFactory.init(SchemaExample)
+        |> SeedFactory.produce(integration_pipeline: [:sandbox_ready, :production_ready])
+      end)
+    end
+
+    test "raises when transition trait prerequisites were rejected" do
+      expected =
+        """
+        Cannot satisfy trait :deployment_promoted for entity :integration_pipeline (requested trait).
+        - Candidate command :promote_pipeline was previously rejected during conflict resolution.
+        - Prerequisite trait :sandbox_ready required by :deployment_promoted cannot be satisfied.
+          - Candidate command :bootstrap_sandbox_pipeline was previously rejected during conflict resolution.
+        """
+        |> String.trim_trailing()
+
+      assert_raise(ArgumentError, expected, fn ->
+        %{}
+        |> SeedFactory.init(SchemaExample)
+        |> SeedFactory.produce(integration_pipeline: [:production_ready, :deployment_promoted])
+      end)
+    end
+
+    test "raises when command requires an unsatisfiable trait" do
+      expected =
+        """
+        Cannot satisfy trait :deployment_promoted for entity :integration_pipeline (requested trait).
+        - Candidate command :promote_pipeline was previously rejected during conflict resolution.
+        - Prerequisite trait :sandbox_ready required by :deployment_promoted cannot be satisfied.
+          - Candidate command :bootstrap_sandbox_pipeline was previously rejected during conflict resolution.
+        """
+        |> String.trim_trailing()
+
+      assert_raise(ArgumentError, expected, fn ->
+        %{}
+        |> SeedFactory.init(SchemaExample)
+        |> SeedFactory.exec(:finalize_pipeline_launch)
+      end)
+    end
+
+    test "uses plural phrasing when multiple implementations were rejected" do
+      error =
+        assert_raise ArgumentError, fn ->
+          %{}
+          |> SeedFactory.init(SchemaExample)
+          |> SeedFactory.produce(integration_pipeline: [:regional_ready, :compliance_signed_off])
+        end
+
+      assert String.contains?(
+               error.message,
+               "- All candidate commands [:sign_off_compliance_from_legacy, :sign_off_compliance_from_blocked] were previously rejected during conflict resolution."
+             )
+
+      assert String.contains?(
+               error.message,
+               "- Prerequisite trait :blocked_ready required by :compliance_signed_off cannot be satisfied."
+             )
+    end
+
+    test "labels traits required by commands in the error context" do
+      error =
+        assert_raise ArgumentError, fn ->
+          %{}
+          |> SeedFactory.init(SchemaExample)
+          |> SeedFactory.produce(launch_announcement: [:launch_announcement_scheduled])
+        end
+
+      expected =
+        """
+        Cannot satisfy trait :deployment_promoted for entity :integration_pipeline (trait required by :publish_launch_announcement command).
+        - Candidate command :promote_pipeline was previously rejected during conflict resolution.
+        - Prerequisite trait :sandbox_ready required by :deployment_promoted cannot be satisfied.
+          - Candidate command :bootstrap_sandbox_pipeline was previously rejected during conflict resolution.
+        """
+        |> String.trim_trailing()
+
+      assert error.message == expected
+    end
+
+    test "raises with combined, deduplicated reasons when multiple trait branches conflict" do
+      error =
+        assert_raise ArgumentError, fn ->
+          %{}
+          |> SeedFactory.init(SchemaExample)
+          |> SeedFactory.produce(integration_pipeline: [:regional_ready, :compliance_signed_off])
+        end
+
+      expected =
+        """
+        Cannot satisfy trait :compliance_signed_off for entity :integration_pipeline (requested trait).
+        - All candidate commands [:sign_off_compliance_from_legacy, :sign_off_compliance_from_blocked] were previously rejected during conflict resolution.
+        - Prerequisite trait :legacy_ready required by :compliance_signed_off cannot be satisfied.
+          - Candidate command :bootstrap_legacy_pipeline was previously rejected during conflict resolution.
+        - Prerequisite trait :blocked_ready required by :compliance_signed_off cannot be satisfied.
+          - Candidate command :bootstrap_blocked_pipeline was previously rejected during conflict resolution.
+        """
+        |> String.trim_trailing()
+
+      assert error.message == expected
+    end
+  end
   defp assert_trait(context, binding_name, expected_traits) when is_list(expected_traits) do
     assert Map.has_key?(context, binding_name),
            "No produced entity bound to #{inspect(binding_name)}"

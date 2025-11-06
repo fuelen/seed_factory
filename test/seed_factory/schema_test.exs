@@ -23,7 +23,15 @@ defmodule SeedFactory.SchemaTest do
     proposal: [:add_proposal_v1, :add_proposal_v2],
     task: [:create_task],
     user: [:create_pending_user, :create_active_user],
-    virtual_file: [:create_virtual_file]
+    virtual_file: [:create_virtual_file],
+    integration_pipeline: [
+      :bootstrap_sandbox_pipeline,
+      :bootstrap_production_pipeline,
+      :bootstrap_legacy_pipeline,
+      :bootstrap_blocked_pipeline
+    ],
+    launch_announcement: [:publish_launch_announcement],
+    project_quota: [:configure_project_quota]
   }
 
   test "SchemaExampleExtended - persisted data" do
@@ -878,6 +886,238 @@ defmodule SeedFactory.SchemaTest do
                ],
                deleting_instructions: [],
                required_entities: %{task: MapSet.new([])}
+             },
+             bootstrap_blocked_pipeline: %SeedFactory.Command{
+               name: :bootstrap_blocked_pipeline,
+               resolve: &SchemaExample.resolve_0_generated_C08613AA81D71D19649ACD4959BCC7FD/1,
+               params: %{},
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{
+                   entity: :integration_pipeline,
+                   from: :integration_pipeline
+                 }
+               ],
+               updating_instructions: [],
+               deleting_instructions: [],
+               required_entities: %{}
+             },
+             bootstrap_legacy_pipeline: %SeedFactory.Command{
+               name: :bootstrap_legacy_pipeline,
+               resolve: &SchemaExample.resolve_0_generated_97BCE0A8433BAFE96A0CCFDF2DC78243/1,
+               params: %{},
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{
+                   entity: :integration_pipeline,
+                   from: :integration_pipeline
+                 }
+               ],
+               updating_instructions: [],
+               deleting_instructions: [],
+               required_entities: %{}
+             },
+             bootstrap_production_pipeline: %SeedFactory.Command{
+               name: :bootstrap_production_pipeline,
+               resolve: &SchemaExample.resolve_0_generated_5A6A6BD7FB8D5C7E3484AB5766FE4AFB/1,
+               params: %{},
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{
+                   entity: :integration_pipeline,
+                   from: :integration_pipeline
+                 }
+               ],
+               updating_instructions: [],
+               deleting_instructions: [],
+               required_entities: %{}
+             },
+             bootstrap_sandbox_pipeline: %SeedFactory.Command{
+               name: :bootstrap_sandbox_pipeline,
+               resolve: &SchemaExample.resolve_0_generated_531D13E399DD3CE104033886E87B3B8D/1,
+               params: %{},
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{
+                   entity: :integration_pipeline,
+                   from: :integration_pipeline
+                 }
+               ],
+               updating_instructions: [],
+               deleting_instructions: [],
+               required_entities: %{}
+             },
+             complete_regional_validation: %SeedFactory.Command{
+               name: :complete_regional_validation,
+               resolve: &SchemaExample.resolve_0_generated_410F0E884AAD26F0D3E4F6C3733DDBCB/1,
+               params: %{
+                 integration_pipeline: %SeedFactory.Parameter{
+                   name: :integration_pipeline,
+                   type: :entity,
+                   value: nil,
+                   map: nil,
+                   generate: nil,
+                   params: %{},
+                   entity: :integration_pipeline,
+                   with_traits: nil
+                 }
+               },
+               producing_instructions: [],
+               updating_instructions: [
+                 %SeedFactory.UpdatingInstruction{
+                   entity: :integration_pipeline,
+                   from: :integration_pipeline
+                 }
+               ],
+               deleting_instructions: [],
+               required_entities: %{integration_pipeline: MapSet.new([])}
+             },
+             configure_project_quota: %SeedFactory.Command{
+               name: :configure_project_quota,
+               resolve: &SchemaExample.resolve_0_generated_D2A920CA902CB9350A2C45E820AFF774/1,
+               params: %{
+                 quota: %SeedFactory.Parameter{
+                   name: :quota,
+                   type: :value,
+                   value: 1000,
+                   map: nil,
+                   generate: nil,
+                   params: %{},
+                   entity: nil,
+                   with_traits: nil
+                 }
+               },
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{entity: :project_quota, from: :project_quota}
+               ],
+               updating_instructions: [],
+               deleting_instructions: [],
+               required_entities: %{}
+             },
+             finalize_pipeline_launch: %SeedFactory.Command{
+               name: :finalize_pipeline_launch,
+               resolve: &SchemaExample.resolve_0_generated_A30477274AD24466334E790BA225F9CE/1,
+               params: %{
+                 integration_pipeline: %SeedFactory.Parameter{
+                   name: :integration_pipeline,
+                   type: :entity,
+                   value: nil,
+                   map: nil,
+                   generate: nil,
+                   params: %{},
+                   entity: :integration_pipeline,
+                   with_traits: [:production_ready, :deployment_promoted]
+                 }
+               },
+               producing_instructions: [],
+               updating_instructions: [
+                 %SeedFactory.UpdatingInstruction{
+                   entity: :integration_pipeline,
+                   from: :integration_pipeline
+                 }
+               ],
+               deleting_instructions: [],
+               required_entities: %{
+                 integration_pipeline: MapSet.new([:production_ready, :deployment_promoted])
+               }
+             },
+             promote_pipeline: %SeedFactory.Command{
+               name: :promote_pipeline,
+               resolve: &SchemaExample.resolve_0_generated_196500BCBAE4FA99543ED34D2959F739/1,
+               params: %{
+                 integration_pipeline: %SeedFactory.Parameter{
+                   name: :integration_pipeline,
+                   type: :entity,
+                   value: nil,
+                   map: nil,
+                   generate: nil,
+                   params: %{},
+                   entity: :integration_pipeline,
+                   with_traits: nil
+                 }
+               },
+               producing_instructions: [],
+               updating_instructions: [
+                 %SeedFactory.UpdatingInstruction{
+                   entity: :integration_pipeline,
+                   from: :integration_pipeline
+                 }
+               ],
+               deleting_instructions: [],
+               required_entities: %{integration_pipeline: MapSet.new([])}
+             },
+             publish_launch_announcement: %SeedFactory.Command{
+               name: :publish_launch_announcement,
+               resolve: &SchemaExample.resolve_0_generated_52B86E9701DEB46508104DCED0F94EE3/1,
+               params: %{
+                 integration_pipeline: %SeedFactory.Parameter{
+                   name: :integration_pipeline,
+                   type: :entity,
+                   value: nil,
+                   map: nil,
+                   generate: nil,
+                   params: %{},
+                   entity: :integration_pipeline,
+                   with_traits: [:production_ready, :deployment_promoted]
+                 }
+               },
+               producing_instructions: [
+                 %SeedFactory.ProducingInstruction{
+                   entity: :launch_announcement,
+                   from: :launch_announcement
+                 }
+               ],
+               updating_instructions: [],
+               deleting_instructions: [],
+               required_entities: %{
+                 integration_pipeline: MapSet.new([:production_ready, :deployment_promoted])
+               }
+             },
+             sign_off_compliance_from_blocked: %SeedFactory.Command{
+               name: :sign_off_compliance_from_blocked,
+               resolve: &SchemaExample.resolve_0_generated_4C7E344685154AF41A02863BF6D9D2CA/1,
+               params: %{
+                 integration_pipeline: %SeedFactory.Parameter{
+                   name: :integration_pipeline,
+                   type: :entity,
+                   value: nil,
+                   map: nil,
+                   generate: nil,
+                   params: %{},
+                   entity: :integration_pipeline,
+                   with_traits: nil
+                 }
+               },
+               producing_instructions: [],
+               updating_instructions: [
+                 %SeedFactory.UpdatingInstruction{
+                   entity: :integration_pipeline,
+                   from: :integration_pipeline
+                 }
+               ],
+               deleting_instructions: [],
+               required_entities: %{integration_pipeline: MapSet.new([])}
+             },
+             sign_off_compliance_from_legacy: %SeedFactory.Command{
+               name: :sign_off_compliance_from_legacy,
+               resolve: &SchemaExample.resolve_0_generated_4C7E344685154AF41A02863BF6D9D2CA/1,
+               params: %{
+                 integration_pipeline: %SeedFactory.Parameter{
+                   name: :integration_pipeline,
+                   type: :entity,
+                   value: nil,
+                   map: nil,
+                   generate: nil,
+                   params: %{},
+                   entity: :integration_pipeline,
+                   with_traits: nil
+                 }
+               },
+               producing_instructions: [],
+               updating_instructions: [
+                 %SeedFactory.UpdatingInstruction{
+                   entity: :integration_pipeline,
+                   from: :integration_pipeline
+                 }
+               ],
+               deleting_instructions: [],
+               required_entities: %{integration_pipeline: MapSet.new([])}
              }
            }
   end
@@ -955,9 +1195,7 @@ defmodule SeedFactory.SchemaTest do
 
     test "cyclic dependency with multiple commands" do
       prefix =
-        Regex.escape(
-          "[SeedFactory.SchemaTest.MySchema]\nroot:\n  found dependency cycles:\n  * "
-        )
+        Regex.escape("[SeedFactory.SchemaTest.MySchema]\nroot:\n  found dependency cycles:\n  * ")
 
       assert_raise(
         Spark.Error.DslError,

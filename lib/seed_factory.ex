@@ -809,16 +809,25 @@ defmodule SeedFactory do
     Enum.reduce(trait_names, acc, fn trait_name, acc ->
       case Map.fetch(traits_by_name, trait_name) do
         {:ok, traits} ->
-          {:ok, acc} =
-            do_collect_requirements_for_traits(
-              acc,
-              traits,
-              traits_by_name,
-              trail_map,
-              required_by
-            )
+          case do_collect_requirements_for_traits(
+                 acc,
+                 traits,
+                 traits_by_name,
+                 trail_map,
+                 required_by
+               ) do
+            {:ok, acc} ->
+              acc
 
-          acc
+            {:error, reason} ->
+              raise ArgumentError,
+                    trait_resolution_error_message(
+                      entity_name,
+                      trait_name,
+                      required_by,
+                      reason
+                    )
+          end
 
         :error ->
           raise ArgumentError,
@@ -838,7 +847,9 @@ defmodule SeedFactory do
            trait.exec_step.command_name in requirements.rejected_commands
          end) do
       [] ->
-        {:error, :rejected}
+        {:error,
+         {:commands_rejected,
+          Enum.map(traits, & &1.exec_step.command_name) |> Enum.uniq()}}
 
       traits ->
         Enum.find_value(traits, fn trait ->
@@ -859,15 +870,18 @@ defmodule SeedFactory do
 
             add_commands_acc = {requirements, MapSet.union(command_names, added_command_names)}
 
-            {add_commands_acc, collected_traits} =
-              Enum.reduce(traits, {add_commands_acc, []}, fn trait,
-                                                             {add_commands_acc, collected_traits} ->
+            {add_commands_acc, collected_traits, errors} =
+              Enum.reduce(traits, {add_commands_acc, [], []}, fn trait,
+                                                                 {add_commands_acc, collected, errors} ->
                 result =
                   case trait.from do
                     nil ->
                       {:ok, add_commands_acc}
 
-                    from when is_atom(from) ->
+                  from when is_atom(from) ->
+                    wrap_prerequisite_result(
+                      trait.name,
+                      from,
                       do_collect_requirements_for_traits(
                         add_commands_acc,
                         traits_by_name[from],
@@ -875,20 +889,24 @@ defmodule SeedFactory do
                         trail_map,
                         required_by
                       )
+                    )
 
-                    from_any_of when is_list(from_any_of) ->
-                      if Enum.any?(from_any_of, fn from ->
-                           traits = traits_by_name[from]
+                  from_any_of when is_list(from_any_of) ->
+                    if Enum.any?(from_any_of, fn from ->
+                         traits = traits_by_name[from]
 
-                           Enum.any?(traits, fn trait ->
-                             data = trail_map[trait.exec_step.command_name]
-                             data && trait.name in data.added
-                           end)
-                         end) do
-                        {:ok, add_commands_acc}
-                      else
-                        from = hd(from_any_of)
+                         Enum.any?(traits, fn trait ->
+                           data = trail_map[trait.exec_step.command_name]
+                           data && trait.name in data.added
+                         end)
+                       end) do
+                      {:ok, add_commands_acc}
+                    else
+                      from = hd(from_any_of)
 
+                      wrap_prerequisite_result(
+                        trait.name,
+                        from,
                         do_collect_requirements_for_traits(
                           add_commands_acc,
                           traits_by_name[from],
@@ -896,18 +914,49 @@ defmodule SeedFactory do
                           trail_map,
                           required_by
                         )
-                      end
-                  end
+                      )
+                    end
+                end
 
                 case result do
-                  {:ok, add_commands_acc} -> {add_commands_acc, [trait | collected_traits]}
-                  {:error, :rejected} -> {add_commands_acc, collected_traits}
+                  {:ok, add_commands_acc} ->
+                    {add_commands_acc, [trait | collected], errors}
+
+                  {:error, reason} ->
+                    {add_commands_acc, collected, [reason | errors]}
                 end
               end)
 
-            case collected_traits do
-              [] -> {:error, :rejected}
-              _ -> {:ok, add_commands_acc}
+            errors = Enum.reverse(errors)
+
+            case {errors, collected_traits} do
+              {[], _collected} ->
+                {:ok, add_commands_acc}
+
+              {errors, []} ->
+                commands_reason =
+                  {:commands_rejected,
+                   Enum.map(traits, & &1.exec_step.command_name) |> Enum.uniq()}
+
+                unique_errors = Enum.uniq(errors)
+
+                reason =
+                  case unique_errors do
+                    [single] ->
+                      {:with_command_reason, commands_reason, single}
+
+                    _ ->
+                      combined =
+                        [commands_reason | unique_errors]
+                        |> Enum.uniq()
+
+                      {:combined_reasons, combined}
+                  end
+
+                {:error, reason}
+
+              {_errors, _collected} ->
+                {:ok, add_commands_acc}
             end
 
           {trait, %{added: added}} ->
@@ -929,6 +978,65 @@ defmodule SeedFactory do
         end
     end
   end
+
+  defp wrap_prerequisite_result(_trait_name, _prerequisite, {:ok, acc}), do: {:ok, acc}
+
+  defp wrap_prerequisite_result(trait_name, prerequisite, {:error, reason}) do
+    {:error, {:prerequisite_unsatisfied, trait_name, prerequisite, reason}}
+  end
+
+  defp trait_resolution_error_message(entity_name, trait_name, required_by, reason) do
+    context_label =
+      case required_by do
+        nil -> "requested trait"
+        command -> "trait required by #{inspect(command)} command"
+      end
+
+    detail =
+      reason
+      |> trait_resolution_reason_lines(0)
+      |> Enum.join("\n")
+
+    "Cannot satisfy trait #{inspect(trait_name)} for entity #{inspect(entity_name)} (#{context_label}).\n" <>
+      detail
+  end
+
+  defp trait_resolution_reason_lines({:commands_rejected, command_names}, indent) do
+    unique_commands = Enum.uniq(command_names)
+
+    case unique_commands do
+      [single] ->
+        ["#{indent_prefix(indent)}- Candidate command #{inspect(single)} was previously rejected during conflict resolution."]
+
+      multiple ->
+        commands = multiple |> Enum.map(&inspect/1) |> Enum.join(", ")
+        ["#{indent_prefix(indent)}- All candidate commands [#{commands}] were previously rejected during conflict resolution."]
+    end
+  end
+
+  defp trait_resolution_reason_lines(
+         {:prerequisite_unsatisfied, trait_name, prerequisite, reason},
+         indent
+       ) do
+    [
+      "#{indent_prefix(indent)}- Prerequisite trait #{inspect(prerequisite)} required by #{inspect(trait_name)} cannot be satisfied."
+    ] ++ trait_resolution_reason_lines(reason, indent + 2)
+  end
+
+  defp trait_resolution_reason_lines(
+         {:with_command_reason, commands_reason, reason},
+         indent
+       ) do
+    trait_resolution_reason_lines(commands_reason, indent) ++
+      trait_resolution_reason_lines(reason, indent)
+  end
+
+  defp trait_resolution_reason_lines({:combined_reasons, reasons}, indent) when is_list(reasons) do
+    reasons
+    |> Enum.flat_map(&trait_resolution_reason_lines(&1, indent))
+  end
+
+  defp indent_prefix(indent), do: String.duplicate(" ", indent)
 
   defp squash_args(traits, initial_args \\ %{}) do
     Enum.reduce(traits, initial_args, fn trait, acc ->

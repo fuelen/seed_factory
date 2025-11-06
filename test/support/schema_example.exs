@@ -8,6 +8,8 @@ defmodule SchemaExample do
   defmodule Email, do: defstruct([:content, delivered?: false])
   defmodule Proposal, do: defstruct([:version])
   defmodule FilesRemovalTask, do: defstruct([:id, :profile_id])
+  defmodule IntegrationPipeline, do: defstruct([:id, :stage, :notes])
+  defmodule LaunchAnnouncement, do: defstruct([:id, :pipeline_id, :status])
 
   defmodule Project do
     defstruct [
@@ -37,6 +39,9 @@ defmodule SchemaExample do
   def gen_id do
     :erlang.unique_integer([:positive])
   end
+
+  alias __MODULE__.IntegrationPipeline
+  alias __MODULE__.LaunchAnnouncement
 
   command :raise_exception do
     resolve(fn _args ->
@@ -334,6 +339,113 @@ defmodule SchemaExample do
     update :project
   end
 
+  command :configure_project_quota do
+    param :quota, value: 1_000
+
+    resolve(fn %{quota: quota} ->
+      {:ok, %{project_quota: %{daily_limit: quota}}}
+    end)
+
+    produce :project_quota
+  end
+
+  command :bootstrap_sandbox_pipeline do
+    resolve(fn _ ->
+      pipeline = %IntegrationPipeline{id: gen_id(), stage: :sandbox, notes: []}
+      {:ok, %{integration_pipeline: pipeline}}
+    end)
+
+    produce :integration_pipeline
+  end
+
+  command :bootstrap_production_pipeline do
+    resolve(fn _ ->
+      pipeline = %IntegrationPipeline{id: gen_id(), stage: :production, notes: []}
+      {:ok, %{integration_pipeline: pipeline}}
+    end)
+
+    produce :integration_pipeline
+  end
+
+  command :bootstrap_legacy_pipeline do
+    resolve(fn _ ->
+      pipeline = %IntegrationPipeline{id: gen_id(), stage: :legacy, notes: []}
+      {:ok, %{integration_pipeline: pipeline}}
+    end)
+
+    produce :integration_pipeline
+  end
+
+  command :bootstrap_blocked_pipeline do
+    resolve(fn _ ->
+      pipeline = %IntegrationPipeline{id: gen_id(), stage: :blocked, notes: []}
+      {:ok, %{integration_pipeline: pipeline}}
+    end)
+
+    produce :integration_pipeline
+  end
+
+  command :promote_pipeline do
+    param :integration_pipeline, entity: :integration_pipeline
+
+    resolve(fn %{integration_pipeline: %IntegrationPipeline{} = pipeline} ->
+      {:ok, %{integration_pipeline: %{pipeline | stage: :promoted}}}
+    end)
+
+    update :integration_pipeline
+  end
+
+  command :complete_regional_validation do
+    param :integration_pipeline, entity: :integration_pipeline
+
+    resolve(fn %{integration_pipeline: %IntegrationPipeline{} = pipeline} ->
+      {:ok, %{integration_pipeline: %{pipeline | stage: :regional_reviewed}}}
+    end)
+
+    update :integration_pipeline
+  end
+
+  command :sign_off_compliance_from_legacy do
+    param :integration_pipeline, entity: :integration_pipeline
+
+    resolve(fn %{integration_pipeline: %IntegrationPipeline{} = pipeline} ->
+      {:ok, %{integration_pipeline: %{pipeline | stage: :compliance_signed_off}}}
+    end)
+
+    update :integration_pipeline
+  end
+
+  command :sign_off_compliance_from_blocked do
+    param :integration_pipeline, entity: :integration_pipeline
+
+    resolve(fn %{integration_pipeline: %IntegrationPipeline{} = pipeline} ->
+      {:ok, %{integration_pipeline: %{pipeline | stage: :compliance_signed_off}}}
+    end)
+
+    update :integration_pipeline
+  end
+
+  command :finalize_pipeline_launch do
+    param :integration_pipeline, entity: :integration_pipeline, with_traits: [:production_ready, :deployment_promoted]
+
+    resolve(fn %{integration_pipeline: %IntegrationPipeline{} = pipeline} ->
+      {:ok, %{integration_pipeline: %{pipeline | stage: :launched}}}
+    end)
+
+    update :integration_pipeline
+  end
+
+  command :publish_launch_announcement do
+    param :integration_pipeline, entity: :integration_pipeline, with_traits: [:production_ready, :deployment_promoted]
+
+    resolve(fn %{integration_pipeline: %IntegrationPipeline{} = pipeline} ->
+      announcement = %LaunchAnnouncement{id: gen_id(), pipeline_id: pipeline.id, status: :scheduled}
+      {:ok, %{launch_announcement: announcement}}
+    end)
+
+    produce :launch_announcement
+  end
+
   trait :archived, :project do
     exec :archive_project
   end
@@ -348,6 +460,60 @@ defmodule SchemaExample do
 
   trait :notification_about_suspended_user, :email do
     exec :suspend_user
+  end
+
+  trait :sandbox_ready, :integration_pipeline do
+    exec :bootstrap_sandbox_pipeline
+  end
+
+  trait :production_ready, :integration_pipeline do
+    exec :bootstrap_production_pipeline
+  end
+
+  trait :legacy_ready, :integration_pipeline do
+    exec :bootstrap_legacy_pipeline
+  end
+
+  trait :blocked_ready, :integration_pipeline do
+    exec :bootstrap_blocked_pipeline
+  end
+
+  trait :deployment_promoted, :integration_pipeline do
+    from :sandbox_ready
+    exec :promote_pipeline
+  end
+
+  trait :regional_ready, :integration_pipeline do
+    from :sandbox_ready
+    exec :complete_regional_validation
+  end
+
+  trait :compliance_signed_off, :integration_pipeline do
+    from :legacy_ready
+    exec :sign_off_compliance_from_legacy
+  end
+
+  trait :compliance_signed_off, :integration_pipeline do
+    from :blocked_ready
+    exec :sign_off_compliance_from_blocked
+  end
+
+  trait :launch_announcement_scheduled, :launch_announcement do
+    exec :publish_launch_announcement
+  end
+
+  trait :basic_project_quota, :project_quota do
+    exec :configure_project_quota do
+      args_match(fn %{quota: quota} -> quota <= 1_000 end)
+      generate_args(fn -> %{quota: 600} end)
+    end
+  end
+
+  trait :trial_project_quota, :project_quota do
+    exec :configure_project_quota do
+      args_match(fn %{quota: quota} -> quota <= 1_000 end)
+      generate_args(fn -> %{quota: 400} end)
+    end
   end
 
   trait :pending, :user do
