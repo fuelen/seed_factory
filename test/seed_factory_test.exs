@@ -1144,6 +1144,7 @@ defmodule SeedFactoryTest do
       assert error.message == expected
     end
   end
+
   defp assert_trait(context, binding_name, expected_traits) when is_list(expected_traits) do
     assert Map.has_key?(context, binding_name),
            "No produced entity bound to #{inspect(binding_name)}"

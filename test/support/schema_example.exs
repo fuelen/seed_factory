@@ -426,7 +426,9 @@ defmodule SchemaExample do
   end
 
   command :finalize_pipeline_launch do
-    param :integration_pipeline, entity: :integration_pipeline, with_traits: [:production_ready, :deployment_promoted]
+    param :integration_pipeline,
+      entity: :integration_pipeline,
+      with_traits: [:production_ready, :deployment_promoted]
 
     resolve(fn %{integration_pipeline: %IntegrationPipeline{} = pipeline} ->
       {:ok, %{integration_pipeline: %{pipeline | stage: :launched}}}
@@ -436,10 +438,17 @@ defmodule SchemaExample do
   end
 
   command :publish_launch_announcement do
-    param :integration_pipeline, entity: :integration_pipeline, with_traits: [:production_ready, :deployment_promoted]
+    param :integration_pipeline,
+      entity: :integration_pipeline,
+      with_traits: [:production_ready, :deployment_promoted]
 
     resolve(fn %{integration_pipeline: %IntegrationPipeline{} = pipeline} ->
-      announcement = %LaunchAnnouncement{id: gen_id(), pipeline_id: pipeline.id, status: :scheduled}
+      announcement = %LaunchAnnouncement{
+        id: gen_id(),
+        pipeline_id: pipeline.id,
+        status: :scheduled
+      }
+
       {:ok, %{launch_announcement: announcement}}
     end)
 

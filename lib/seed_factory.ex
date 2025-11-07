@@ -848,8 +848,7 @@ defmodule SeedFactory do
          end) do
       [] ->
         {:error,
-         {:commands_rejected,
-          Enum.map(traits, & &1.exec_step.command_name) |> Enum.uniq()}}
+         {:commands_rejected, Enum.map(traits, & &1.exec_step.command_name) |> Enum.uniq()}}
 
       traits ->
         Enum.find_value(traits, fn trait ->
@@ -872,38 +871,14 @@ defmodule SeedFactory do
 
             {add_commands_acc, collected_traits, errors} =
               Enum.reduce(traits, {add_commands_acc, [], []}, fn trait,
-                                                                 {add_commands_acc, collected, errors} ->
+                                                                 {add_commands_acc, collected,
+                                                                  errors} ->
                 result =
                   case trait.from do
                     nil ->
                       {:ok, add_commands_acc}
 
-                  from when is_atom(from) ->
-                    wrap_prerequisite_result(
-                      trait.name,
-                      from,
-                      do_collect_requirements_for_traits(
-                        add_commands_acc,
-                        traits_by_name[from],
-                        traits_by_name,
-                        trail_map,
-                        required_by
-                      )
-                    )
-
-                  from_any_of when is_list(from_any_of) ->
-                    if Enum.any?(from_any_of, fn from ->
-                         traits = traits_by_name[from]
-
-                         Enum.any?(traits, fn trait ->
-                           data = trail_map[trait.exec_step.command_name]
-                           data && trait.name in data.added
-                         end)
-                       end) do
-                      {:ok, add_commands_acc}
-                    else
-                      from = hd(from_any_of)
-
+                    from when is_atom(from) ->
                       wrap_prerequisite_result(
                         trait.name,
                         from,
@@ -915,8 +890,33 @@ defmodule SeedFactory do
                           required_by
                         )
                       )
-                    end
-                end
+
+                    from_any_of when is_list(from_any_of) ->
+                      if Enum.any?(from_any_of, fn from ->
+                           traits = traits_by_name[from]
+
+                           Enum.any?(traits, fn trait ->
+                             data = trail_map[trait.exec_step.command_name]
+                             data && trait.name in data.added
+                           end)
+                         end) do
+                        {:ok, add_commands_acc}
+                      else
+                        from = hd(from_any_of)
+
+                        wrap_prerequisite_result(
+                          trait.name,
+                          from,
+                          do_collect_requirements_for_traits(
+                            add_commands_acc,
+                            traits_by_name[from],
+                            traits_by_name,
+                            trail_map,
+                            required_by
+                          )
+                        )
+                      end
+                  end
 
                 case result do
                   {:ok, add_commands_acc} ->
@@ -1006,11 +1006,16 @@ defmodule SeedFactory do
 
     case unique_commands do
       [single] ->
-        ["#{indent_prefix(indent)}- Candidate command #{inspect(single)} was previously rejected during conflict resolution."]
+        [
+          "#{indent_prefix(indent)}- Candidate command #{inspect(single)} was previously rejected during conflict resolution."
+        ]
 
       multiple ->
         commands = multiple |> Enum.map(&inspect/1) |> Enum.join(", ")
-        ["#{indent_prefix(indent)}- All candidate commands [#{commands}] were previously rejected during conflict resolution."]
+
+        [
+          "#{indent_prefix(indent)}- All candidate commands [#{commands}] were previously rejected during conflict resolution."
+        ]
     end
   end
 
@@ -1031,7 +1036,8 @@ defmodule SeedFactory do
       trait_resolution_reason_lines(reason, indent)
   end
 
-  defp trait_resolution_reason_lines({:combined_reasons, reasons}, indent) when is_list(reasons) do
+  defp trait_resolution_reason_lines({:combined_reasons, reasons}, indent)
+       when is_list(reasons) do
     reasons
     |> Enum.flat_map(&trait_resolution_reason_lines(&1, indent))
   end

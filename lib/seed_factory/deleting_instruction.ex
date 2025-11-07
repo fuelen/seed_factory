@@ -1,6 +1,6 @@
 defmodule SeedFactory.DeletingInstruction do
   @moduledoc false
-  defstruct [:entity]
+  defstruct [:entity, __spark_metadata__: nil]
 
   @schema [
     entity: [

@@ -1,6 +1,16 @@
 defmodule SeedFactory.Parameter do
   @moduledoc false
-  defstruct [:name, :params, :map, :with_traits, :value, :generate, :entity, :type]
+  defstruct [
+    :name,
+    :params,
+    :map,
+    :with_traits,
+    :value,
+    :generate,
+    :entity,
+    :type,
+    __spark_metadata__: nil
+  ]
 
   @schema [
     name: [

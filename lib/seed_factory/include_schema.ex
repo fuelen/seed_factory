@@ -1,6 +1,6 @@
 defmodule SeedFactory.IncludeSchema do
   @moduledoc false
-  defstruct [:schema_module]
+  defstruct [:schema_module, __spark_metadata__: nil]
 
   @schema [
     schema_module: [

@@ -25,10 +25,11 @@ defmodule SeedFactory.Transformers.IndexCommands do
       {_command_name, [_]} ->
         :ok
 
-      {command_name, [_ | _]} ->
+      {command_name, [_first, second | _rest]} ->
         raise Spark.Error.DslError,
           path: [:root, :command, command_name],
-          message: "duplicated command name"
+          message: "duplicated command name",
+          location: Spark.Dsl.Entity.anno(second)
     end)
   end
 end

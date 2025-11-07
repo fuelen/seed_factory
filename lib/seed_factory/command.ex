@@ -9,7 +9,8 @@ defmodule SeedFactory.Command do
     :deleting_instructions,
     :required_entities,
     :resolve,
-    :params
+    :params,
+    __spark_metadata__: nil
   ]
 
   @schema [
@@ -67,7 +68,8 @@ defmodule SeedFactory.Command do
       raise Spark.Error.DslError,
         module: __MODULE__,
         path: [:root, :command, "nil"],
-        message: "name of the command cannot be nil"
+        message: "name of the command cannot be nil",
+        location: Spark.Dsl.Entity.anno(command)
     end
   end
 
@@ -77,7 +79,8 @@ defmodule SeedFactory.Command do
       raise Spark.Error.DslError,
         module: __MODULE__,
         path: [:root, :command, command.name],
-        message: "at least 1 produce, update or delete directive must be set"
+        message: "at least 1 produce, update or delete directive must be set",
+        location: Spark.Dsl.Entity.anno(command)
     end
   end
 
@@ -93,7 +96,8 @@ defmodule SeedFactory.Command do
         raise Spark.Error.DslError,
           module: __MODULE__,
           path: [:root, :command, command.name],
-          message: "cannot apply multiple instructions on the same entity (#{inspect(entity)})"
+          message: "cannot apply multiple instructions on the same entity (#{inspect(entity)})",
+          location: Spark.Dsl.Entity.anno(command)
     end)
   end
 end

@@ -50,7 +50,8 @@ defmodule SeedFactory.Transformers.IndexTraits do
     else
       raise Spark.Error.DslError,
         path: [:root, :trait, trait.name, entity],
-        message: "unknown entity"
+        message: "unknown entity",
+        location: Spark.Dsl.Entity.anno(trait)
     end
   end
 
@@ -66,13 +67,15 @@ defmodule SeedFactory.Transformers.IndexTraits do
           :error ->
             raise Spark.Error.DslError,
               path: [:root, :trait, trait.name, entity],
-              message: "unknown command #{inspect(trait.exec_step.command_name)}"
+              message: "unknown command #{inspect(trait.exec_step.command_name)}",
+              location: Spark.Dsl.Entity.anno(trait)
         end
 
       if trait.from == [] do
         raise Spark.Error.DslError,
           path: [:root, :trait, trait.name, entity],
-          message: ":from option cannot be an empty list"
+          message: ":from option cannot be an empty list",
+          location: Spark.Dsl.Entity.anno(trait)
       end
 
       transition? = not is_nil(trait.from)
@@ -89,13 +92,15 @@ defmodule SeedFactory.Transformers.IndexTraits do
             raise Spark.Error.DslError,
               path: [:root, :trait, trait.name, entity],
               message:
-                "trait references #{inspect(command.name)} via `from`, but the command produces the #{inspect(entity)} entity. Transitions must update existing entities."
+                "trait references #{inspect(command.name)} via `from`, but the command produces the #{inspect(entity)} entity. Transitions must update existing entities.",
+              location: Spark.Dsl.Entity.anno(trait)
 
           not updates_entity? ->
             raise Spark.Error.DslError,
               path: [:root, :trait, trait.name, entity],
               message:
-                "trait references #{inspect(command.name)} via `from`, but the command does not update the #{inspect(entity)} entity."
+                "trait references #{inspect(command.name)} via `from`, but the command does not update the #{inspect(entity)} entity.",
+              location: Spark.Dsl.Entity.anno(trait)
 
           true ->
             :ok
@@ -108,7 +113,8 @@ defmodule SeedFactory.Transformers.IndexTraits do
         raise Spark.Error.DslError,
           path: [:root, :trait, trait.name, entity],
           message:
-            "contains an exec step to the #{inspect(trait.exec_step.command_name)} command which neither produces nor updates the #{inspect(entity)} entity"
+            "contains an exec step to the #{inspect(trait.exec_step.command_name)} command which neither produces nor updates the #{inspect(entity)} entity",
+          location: Spark.Dsl.Entity.anno(trait)
       end
     end)
   end
@@ -120,10 +126,11 @@ defmodule SeedFactory.Transformers.IndexTraits do
       {_, [_]} ->
         :ok
 
-      {{trait_name, _command_name}, [_ | _]} ->
+      {{trait_name, _command_name}, [_first, second | _rest]} ->
         raise Spark.Error.DslError,
           path: [:root, :trait, trait_name, entity],
-          message: "duplicated trait"
+          message: "duplicated trait",
+          location: Spark.Dsl.Entity.anno(second)
     end)
   end
 end

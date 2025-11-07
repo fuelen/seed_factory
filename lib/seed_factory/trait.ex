@@ -7,7 +7,8 @@ defmodule SeedFactory.Trait do
     :entity,
     :exec_step,
     :from,
-    to: []
+    to: [],
+    __spark_metadata__: nil
   ]
 
   @schema [

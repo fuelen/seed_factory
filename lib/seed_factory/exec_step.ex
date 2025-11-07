@@ -6,7 +6,8 @@ defmodule SeedFactory.ExecStep do
     :command_name,
     :args_pattern,
     :args_match,
-    :generate_args
+    :generate_args,
+    __spark_metadata__: nil
   ]
 
   @schema [

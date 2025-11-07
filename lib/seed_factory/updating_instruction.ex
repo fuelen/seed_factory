@@ -1,6 +1,6 @@
 defmodule SeedFactory.UpdatingInstruction do
   @moduledoc false
-  defstruct [:entity, :from]
+  defstruct [:entity, :from, __spark_metadata__: nil]
 
   @schema [
     entity: [
