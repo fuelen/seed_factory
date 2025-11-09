@@ -30,7 +30,7 @@ defmodule SeedFactoryTest do
   end
 
   test "rebind unknown entity", context do
-    assert_raise ArgumentError, "Unknown entity :Office", fn ->
+    assert_raise SeedFactory.UnknownEntityError, "Unknown entity :Office", fn ->
       rebind(context, [Office: :office1], fn context ->
         exec(context, :create_office, name: "My Office #1")
       end)
@@ -120,7 +120,7 @@ defmodule SeedFactoryTest do
     context = produce(context, :user)
     {user, context} = Map.pop!(context, :user)
 
-    assert_raise ArgumentError,
+    assert_raise SeedFactory.EntityNotFoundError,
                  "Cannot update entity :user while executing :activate_user: key :user doesn't exist in the context",
                  fn ->
                    exec(context, :activate_user, user: user)
@@ -144,7 +144,7 @@ defmodule SeedFactoryTest do
     {draft_project, context} = Map.pop!(context, :draft_project)
 
     # Maybe, later deleting of non-existing values will be noop, but for the time being the operation is restricted
-    assert_raise ArgumentError,
+    assert_raise SeedFactory.EntityNotFoundError,
                  "Cannot delete entity :draft_project from the context while executing :publish_project: key :draft_project doesn't exist",
                  fn ->
                    exec(context, :publish_project, project: draft_project)
@@ -162,7 +162,7 @@ defmodule SeedFactoryTest do
   end
 
   test "produce unknown entity", context do
-    assert_raise ArgumentError, "Unknown entity :unknown_entity", fn ->
+    assert_raise SeedFactory.UnknownEntityError, "Unknown entity :unknown_entity", fn ->
       produce(context, :unknown_entity)
     end
   end
@@ -446,12 +446,11 @@ defmodule SeedFactoryTest do
   end
 
   test "produce entity with traits when it was already created without traits", context do
-    assert_raise ArgumentError,
-                 """
-                 Traits to previously executed command :create_pending_user do not match:
-                   previously applied traits: []
-                   specified trait: :contacts_confirmed
-                 """,
+    assert_raise SeedFactory.TraitResolutionError,
+                 "Cannot satisfy trait :contacts_confirmed for entity :profile (requested trait).\n" <>
+                   "- Traits to previously executed command :create_pending_user do not match:\n" <>
+                   "    previously applied traits: []\n" <>
+                   "    specified trait: :contacts_confirmed",
                  fn ->
                    context
                    |> produce(:profile)
@@ -519,7 +518,7 @@ defmodule SeedFactoryTest do
   end
 
   test "exec unknown command", context do
-    assert_raise ArgumentError,
+    assert_raise SeedFactory.UnknownCommandError,
                  "Unknown command :unknown_command",
                  fn ->
                    exec(context, :unknown_command)
@@ -528,7 +527,7 @@ defmodule SeedFactoryTest do
 
   test "double execution of the same command - don't report current traits for entities without traits",
        context do
-    assert_raise ArgumentError,
+    assert_raise SeedFactory.EntityAlreadyExistsError,
                  "Cannot put entity :org to the context while executing :create_org: key :org already exists.",
                  fn ->
                    context
@@ -539,7 +538,7 @@ defmodule SeedFactoryTest do
 
   test "double execution of the same command - report current traits for entities with traits",
        context do
-    assert_raise ArgumentError,
+    assert_raise SeedFactory.EntityAlreadyExistsError,
                  """
                  Cannot put entity :task to the context while executing :create_task: key :task already exists.
 
@@ -716,12 +715,11 @@ defmodule SeedFactoryTest do
     end
 
     test "specify traits which conflict with previously applied traits", context do
-      assert_raise ArgumentError,
-                   """
-                   Traits to previously executed command :create_pending_user do not match:
-                     previously applied traits: [:unknown_plan, :admin, :pending]
-                     specified trait: :normal
-                   """,
+      assert_raise SeedFactory.TraitResolutionError,
+                   "Cannot satisfy trait :normal for entity :user (requested trait).\n" <>
+                     "- Traits to previously executed command :create_pending_user do not match:\n" <>
+                     "    previously applied traits: [:unknown_plan, :admin, :pending]\n" <>
+                     "    specified trait: :normal",
                    fn ->
                      context
                      |> produce(user: [:admin])
@@ -729,12 +727,11 @@ defmodule SeedFactoryTest do
                      |> produce(user: [:normal])
                    end
 
-      assert_raise ArgumentError,
-                   """
-                   Traits to previously executed command :publish_project do not match:
-                     previously applied traits: [:expired]
-                     trait required by :create_virtual_file command: :not_expired
-                   """,
+      assert_raise SeedFactory.TraitResolutionError,
+                   "Cannot satisfy trait :not_expired for entity :project (trait required by :create_virtual_file command).\n" <>
+                     "- Traits to previously executed command :publish_project do not match:\n" <>
+                     "    previously applied traits: [:expired]\n" <>
+                     "    trait required by :create_virtual_file command: :not_expired",
                    fn ->
                      context
                      |> produce(project: [:expired], user: [:admin])
@@ -745,7 +742,7 @@ defmodule SeedFactoryTest do
     test "commands that remove entities should be executed at the end", context do
       # it is important, that :publish_project command is executed before :suspend_user, so we have expected error
       # and not "Cannot put entity :email to the context while executing :publish_project: key :email already exists"
-      assert_raise ArgumentError,
+      assert_raise SeedFactory.EntityAlreadyExistsError,
                    """
                    Cannot put entity :email to the context while executing :suspend_user: key :email already exists.
 
@@ -771,7 +768,7 @@ defmodule SeedFactoryTest do
 
       # :project requires active user.
       # in order to :activate user, we execute :activate_user command to move user from :pending to :active status
-      assert_raise ArgumentError,
+      assert_raise SeedFactory.TraitRestrictionConflictError,
                    """
                    Cannot apply traits [:active] to :user as a requirement for :publish_project command.
                    The entity was requested with the following traits: [:pending, :admin].
@@ -780,7 +777,7 @@ defmodule SeedFactoryTest do
                      produce(context, [:project, user: [:pending, :admin]])
                    end
 
-      assert_raise ArgumentError,
+      assert_raise SeedFactory.TraitRemovedByCommandError,
                    """
                    Cannot apply traits [:pending] to :user1 because they were removed by the command :activate_user.
                    Current traits: [:normal, :free_plan, :active].
@@ -791,7 +788,7 @@ defmodule SeedFactoryTest do
                      |> produce(user: [:pending, as: :user1])
                    end
 
-      assert_raise ArgumentError,
+      assert_raise SeedFactory.TraitPathNotFoundError,
                    """
                    Cannot apply traits [:pending] to :user.
                    There is no path from traits [:active].
@@ -806,7 +803,7 @@ defmodule SeedFactoryTest do
 
     test "raise a meaningful error when produced entity has been already produced by another command",
          context do
-      assert_raise ArgumentError,
+      assert_raise SeedFactory.EntityAlreadyExistsError,
                    """
                    Cannot put entity :email to the context while executing :publish_project: key :email already exists.
 
@@ -851,21 +848,25 @@ defmodule SeedFactoryTest do
     end
 
     test "entity doesn't have traits", context do
-      assert_raise ArgumentError, "Entity :org doesn't have traits", fn ->
+      assert_raise SeedFactory.TraitNotFoundError, "Entity :org doesn't have traits", fn ->
         produce(context, org: [:something])
       end
     end
 
     test "unknown traits", context do
-      assert_raise ArgumentError, "Entity :user doesn't have trait :something", fn ->
-        produce(context, user: [:something])
-      end
+      assert_raise SeedFactory.UnknownTraitError,
+                   "Entity :user doesn't have trait :something",
+                   fn ->
+                     produce(context, user: [:something])
+                   end
 
-      assert_raise ArgumentError, "Entity :user doesn't have trait :something", fn ->
-        context
-        |> produce(user: [:pending])
-        |> produce(user: [:something])
-      end
+      assert_raise SeedFactory.UnknownTraitError,
+                   "Entity :user doesn't have trait :something",
+                   fn ->
+                     context
+                     |> produce(user: [:pending])
+                     |> produce(user: [:something])
+                   end
     end
 
     test "multiple traits which use the same parameter of the entity", context do
@@ -1042,7 +1043,7 @@ defmodule SeedFactoryTest do
         """
         |> String.trim_trailing()
 
-      assert_raise(ArgumentError, expected, fn ->
+      assert_raise(SeedFactory.TraitResolutionError, expected, fn ->
         %{}
         |> SeedFactory.init(SchemaExample)
         |> SeedFactory.produce(integration_pipeline: [:sandbox_ready, :production_ready])
@@ -1059,7 +1060,7 @@ defmodule SeedFactoryTest do
         """
         |> String.trim_trailing()
 
-      assert_raise(ArgumentError, expected, fn ->
+      assert_raise(SeedFactory.TraitResolutionError, expected, fn ->
         %{}
         |> SeedFactory.init(SchemaExample)
         |> SeedFactory.produce(integration_pipeline: [:production_ready, :deployment_promoted])
@@ -1076,7 +1077,7 @@ defmodule SeedFactoryTest do
         """
         |> String.trim_trailing()
 
-      assert_raise(ArgumentError, expected, fn ->
+      assert_raise(SeedFactory.TraitResolutionError, expected, fn ->
         %{}
         |> SeedFactory.init(SchemaExample)
         |> SeedFactory.exec(:finalize_pipeline_launch)
@@ -1085,7 +1086,7 @@ defmodule SeedFactoryTest do
 
     test "uses plural phrasing when multiple implementations were rejected" do
       error =
-        assert_raise ArgumentError, fn ->
+        assert_raise SeedFactory.TraitResolutionError, fn ->
           %{}
           |> SeedFactory.init(SchemaExample)
           |> SeedFactory.produce(integration_pipeline: [:regional_ready, :compliance_signed_off])
@@ -1104,7 +1105,7 @@ defmodule SeedFactoryTest do
 
     test "labels traits required by commands in the error context" do
       error =
-        assert_raise ArgumentError, fn ->
+        assert_raise SeedFactory.TraitResolutionError, fn ->
           %{}
           |> SeedFactory.init(SchemaExample)
           |> SeedFactory.produce(launch_announcement: [:launch_announcement_scheduled])
@@ -1124,7 +1125,7 @@ defmodule SeedFactoryTest do
 
     test "raises with combined, deduplicated reasons when multiple trait branches conflict" do
       error =
-        assert_raise ArgumentError, fn ->
+        assert_raise SeedFactory.TraitResolutionError, fn ->
           %{}
           |> SeedFactory.init(SchemaExample)
           |> SeedFactory.produce(integration_pipeline: [:regional_ready, :compliance_signed_off])

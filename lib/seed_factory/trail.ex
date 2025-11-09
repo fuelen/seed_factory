@@ -1,9 +1,6 @@
 defmodule SeedFactory.Trail do
   @moduledoc false
-  defstruct [
-    :produced_by,
-    :updated_by
-  ]
+  defstruct [:produced_by, :updated_by]
 
   def new(produced_by) do
     %__MODULE__{produced_by: produced_by, updated_by: []}
