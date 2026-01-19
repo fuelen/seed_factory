@@ -58,8 +58,15 @@ defmodule SeedFactory.Requirements.CommandGraph do
             {graph, MapSet.new([])}
 
           {:is_subset, diff} ->
+            # Only remove commands from diff if they are NOT in any other conflict groups.
+            # This prevents premature removal of commands that are still needed for other conflicts.
+            commands_to_remove =
+              Enum.filter(diff, fn cmd_name ->
+                length(graph.nodes[cmd_name].conflict_groups) == 1
+              end)
+
             graph =
-              diff
+              commands_to_remove
               |> Enum.reduce(graph, &remove_node(&2, &1))
               |> link_nodes(command_names, required_by, traits)
 

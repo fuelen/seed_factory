@@ -10,6 +10,10 @@ defmodule SchemaExample do
   defmodule FilesRemovalTask, do: defstruct([:id, :profile_id])
   defmodule IntegrationPipeline, do: defstruct([:id, :stage, :notes])
   defmodule LaunchAnnouncement, do: defstruct([:id, :pipeline_id, :status])
+  defmodule Award, do: defstruct([:id])
+  defmodule Nomination, do: defstruct([:id])
+  defmodule Prize, do: defstruct([:id])
+  defmodule Ceremony, do: defstruct([:id])
 
   defmodule Project do
     defstruct [
@@ -782,5 +786,58 @@ defmodule SchemaExample do
   trait :in_review, :task do
     from :in_progress
     exec :move_task_to_in_review
+  end
+
+  command :grant_award do
+    resolve(fn _ ->
+      {:ok, %{award: %Award{id: gen_id()}, nomination: %Nomination{id: gen_id()}}}
+    end)
+
+    produce :award
+    produce :nomination
+  end
+
+  command :nominate_award do
+    resolve(fn _ ->
+      {:ok, %{award: %Award{id: gen_id()}, nomination: %Nomination{id: gen_id()}}}
+    end)
+
+    produce :award
+    produce :nomination
+  end
+
+  command :create_ceremony do
+    param :_award, entity: :award
+    resolve(fn _ -> {:ok, %{ceremony: %Ceremony{id: gen_id()}}} end)
+    produce :ceremony
+  end
+
+  command :direct_award do
+    param :_ceremony, entity: :ceremony
+
+    resolve(fn _ ->
+      {:ok, %{award: %Award{id: gen_id()}, prize: %Prize{id: gen_id()}}}
+    end)
+
+    produce :award
+    produce :prize
+  end
+
+  command :earn_prize do
+    param :_nomination, entity: :nomination
+    resolve(fn _ -> {:ok, %{prize: %Prize{id: gen_id()}}} end)
+    produce :prize
+  end
+
+  trait :default, :ceremony do
+    exec :create_ceremony
+  end
+
+  trait :direct, :prize do
+    exec :direct_award
+  end
+
+  trait :earned, :prize do
+    exec :earn_prize
   end
 end

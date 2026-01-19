@@ -40,12 +40,14 @@ defmodule SeedFactory.SchemaTest do
   @schema_example_entities %{
     approval_process: [:start_approval_process],
     approved_candidate: [:approve_candidate, :create_approved_candidate],
+    award: [:grant_award, :nominate_award, :direct_award],
     candidate_profile: [
       :start_approval_process,
       :create_candidate_profile,
       :create_approved_candidate
     ],
     candidate_welcome_notification: [:send_welcome_to_candidate, :send_welcome_to_candidate_v2],
+    ceremony: [:create_ceremony],
     draft_project: [
       :create_draft_project,
       :import_draft_project_from_third_party_service,
@@ -57,8 +59,10 @@ defmodule SeedFactory.SchemaTest do
       :import_draft_project_from_third_party_service,
       :import_draft_project_from_ftp_server
     ],
+    nomination: [:grant_award, :nominate_award],
     office: [:create_office],
     org: [:create_org],
+    prize: [:direct_award, :earn_prize],
     profile: [:create_pending_user, :create_active_user],
     project: [:publish_project],
     proposal: [:add_proposal_v1, :add_proposal_v2],
@@ -1171,6 +1175,91 @@ defmodule SeedFactory.SchemaTest do
         ],
         deleting_instructions: [],
         required_entities: %{integration_pipeline: MapSet.new([])}
+      },
+      # Regression test commands for :is_subset bug
+      grant_award: %SeedFactory.Command{
+        name: :grant_award,
+        params: %{},
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :award, from: :award},
+          %SeedFactory.ProducingInstruction{entity: :nomination, from: :nomination}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{}
+      },
+      nominate_award: %SeedFactory.Command{
+        name: :nominate_award,
+        params: %{},
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :award, from: :award},
+          %SeedFactory.ProducingInstruction{entity: :nomination, from: :nomination}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{}
+      },
+      create_ceremony: %SeedFactory.Command{
+        name: :create_ceremony,
+        params: %{
+          _award: %SeedFactory.Parameter{
+            name: :_award,
+            type: :entity,
+            value: nil,
+            map: nil,
+            generate: nil,
+            params: %{},
+            entity: :award,
+            with_traits: nil
+          }
+        },
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :ceremony, from: :ceremony}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{award: MapSet.new([])}
+      },
+      direct_award: %SeedFactory.Command{
+        name: :direct_award,
+        params: %{
+          _ceremony: %SeedFactory.Parameter{
+            name: :_ceremony,
+            type: :entity,
+            value: nil,
+            map: nil,
+            generate: nil,
+            params: %{},
+            entity: :ceremony,
+            with_traits: nil
+          }
+        },
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :award, from: :award},
+          %SeedFactory.ProducingInstruction{entity: :prize, from: :prize}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{ceremony: MapSet.new([])}
+      },
+      earn_prize: %SeedFactory.Command{
+        name: :earn_prize,
+        params: %{
+          _nomination: %SeedFactory.Parameter{
+            name: :_nomination,
+            type: :entity,
+            value: nil,
+            map: nil,
+            generate: nil,
+            params: %{},
+            entity: :nomination,
+            with_traits: nil
+          }
+        },
+        producing_instructions: [%SeedFactory.ProducingInstruction{entity: :prize, from: :prize}],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{nomination: MapSet.new([])}
       }
     }
 

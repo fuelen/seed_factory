@@ -1183,6 +1183,27 @@ defmodule SeedFactoryTest do
 
       assert error.message == expected
     end
+
+    # Regression test for :is_subset conflict resolution bug.
+    # See SchemaExample for the test schema (Award, Nomination, Prize, Ceremony).
+    #
+    # Flow when requesting prize:
+    # 1. prize conflict [direct_award, earn_prize] registered
+    # 2. direct_award requires ceremony -> ceremony requires award
+    # 3. award conflict [grant_award, nominate_award, direct_award] registered
+    # 4. earn_prize requires nomination
+    # 5. nomination conflict [grant_award, nominate_award] - SUBSET of award!
+    # 6. diff = [direct_award], but it's in prize AND award groups
+    #
+    # Bug: direct_award was removed despite being in 2 conflict groups
+    test "is_subset conflict resolution preserves commands needed by other branches" do
+      context =
+        %{}
+        |> SeedFactory.init(SchemaExample)
+        |> SeedFactory.produce([:prize])
+
+      assert context.prize
+    end
   end
 
   defp assert_trait(context, binding_name, expected_traits) when is_list(expected_traits) do
