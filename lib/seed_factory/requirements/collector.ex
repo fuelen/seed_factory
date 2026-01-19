@@ -1,13 +1,13 @@
 defmodule SeedFactory.Requirements.Collector do
   @moduledoc false
 
-  def resolve_traits(
-        {requirements, command_names} = acc,
-        traits,
-        traits_by_name,
-        trail_map,
-        required_by
-      ) do
+  defp resolve_traits(
+         {requirements, command_names} = acc,
+         traits,
+         traits_by_name,
+         trail_map,
+         required_by
+       ) do
     with {:ok, filtered_traits} <- filter_rejected_commands(traits, requirements) do
       case check_already_executed(filtered_traits, trail_map, acc) do
         {:already_executed, result} ->
@@ -94,11 +94,17 @@ defmodule SeedFactory.Requirements.Collector do
 
   defp resolve_trait_dependencies(
          traits,
-         acc,
+         {requirements, _command_names} = acc,
          traits_by_name,
          trail_map,
          required_by
        ) do
+    # Only process dependencies for traits whose commands are actually in the graph.
+    traits =
+      Enum.filter(traits, fn trait ->
+        Map.has_key?(requirements.graph.nodes, trait.exec_step.command_name)
+      end)
+
     {final_acc, resolved_traits, errors} =
       Enum.reduce(traits, {acc, [], []}, fn trait, {acc, resolved, errors} ->
         case resolve_single_trait_dependencies(trait, acc, traits_by_name, trail_map, required_by) do
@@ -262,15 +268,19 @@ defmodule SeedFactory.Requirements.Collector do
             end
           else
             if trait_names == [] do
-              command_names_that_can_produce_entity =
-                SeedFactory.Context.fetch_command_names_by_entity!(context, entity_name)
+              {names, traits} =
+                SeedFactory.Requirements.Restrictions.command_names_and_traits_for_entity(
+                  requirements.restrictions,
+                  context,
+                  entity_name
+                )
 
               {graph, added_command_names} =
                 SeedFactory.Requirements.CommandGraph.register_commands(
                   requirements.graph,
-                  command_names_that_can_produce_entity,
+                  names,
                   required_by,
-                  []
+                  traits
                 )
 
               requirements = %{requirements | graph: graph}
@@ -341,28 +351,18 @@ defmodule SeedFactory.Requirements.Collector do
         required_by
       ) do
     Enum.reduce(trait_names, acc, fn trait_name, acc ->
-      case Map.fetch(traits_by_name, trait_name) do
-        {:ok, traits} ->
-          case resolve_traits(
-                 acc,
-                 traits,
-                 traits_by_name,
-                 trail_map,
-                 required_by
-               ) do
-            {:ok, acc} ->
-              acc
+      traits = Map.fetch!(traits_by_name, trait_name)
 
-            {:error, reason} ->
-              raise SeedFactory.TraitResolutionError,
-                entity: entity_name,
-                trait: trait_name,
-                required_by: required_by,
-                reason: reason
-          end
+      case resolve_traits(acc, traits, traits_by_name, trail_map, required_by) do
+        {:ok, acc} ->
+          acc
 
-        :error ->
-          raise SeedFactory.UnknownTraitError, entity: entity_name, trait: trait_name
+        {:error, reason} ->
+          raise SeedFactory.TraitResolutionError,
+            entity: entity_name,
+            trait: trait_name,
+            required_by: required_by,
+            reason: reason
       end
     end)
   end

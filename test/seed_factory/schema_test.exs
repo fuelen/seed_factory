@@ -8,10 +8,12 @@ defmodule SeedFactory.SchemaTest do
     :ok
   end
 
-  # Helper to remove __spark_metadata__ from nested structures for comparison
+  # Helper to normalize nested structures for comparison by removing internal fields
   defp strip_metadata(map) when is_map(map) do
     map
-    |> Map.drop([:__spark_metadata__, :__struct__])
+    # __spark_metadata__, __struct__ - internal Spark fields
+    # resolve - function reference with hash based on line number, not useful to compare
+    |> Map.drop([:__spark_metadata__, :__struct__, :resolve])
     |> Map.new(fn {k, v} -> {k, strip_metadata(v)} end)
   end
 
@@ -38,7 +40,12 @@ defmodule SeedFactory.SchemaTest do
   @schema_example_entities %{
     approval_process: [:start_approval_process],
     approved_candidate: [:approve_candidate, :create_approved_candidate],
-    candidate_profile: [:start_approval_process, :create_approved_candidate],
+    candidate_profile: [
+      :start_approval_process,
+      :create_candidate_profile,
+      :create_approved_candidate
+    ],
+    candidate_welcome_notification: [:send_welcome_to_candidate, :send_welcome_to_candidate_v2],
     draft_project: [
       :create_draft_project,
       :import_draft_project_from_third_party_service,
@@ -117,7 +124,6 @@ defmodule SeedFactory.SchemaTest do
         },
         producing_instructions: [],
         required_entities: %{user: MapSet.new([:pending])},
-        resolve: &SchemaExample.resolve_0_generated_C17C97BAADD6E3D44133EA735E723E9A/1,
         updating_instructions: [
           %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
         ]
@@ -141,7 +147,6 @@ defmodule SeedFactory.SchemaTest do
           %SeedFactory.ProducingInstruction{entity: :proposal, from: :proposal}
         ],
         required_entities: %{draft_project: MapSet.new([])},
-        resolve: &SchemaExample.resolve_0_generated_27304FE0319036410B6571AA890ED703/1,
         updating_instructions: []
       },
       add_proposal_v2: %SeedFactory.Command{
@@ -163,7 +168,6 @@ defmodule SeedFactory.SchemaTest do
           %SeedFactory.ProducingInstruction{entity: :proposal, from: :proposal}
         ],
         required_entities: %{draft_project: MapSet.new([])},
-        resolve: &SchemaExample.resolve_0_generated_760F3AAE84A314262EE1616EC1583D2F/1,
         updating_instructions: []
       },
       anonymize_profile_of_suspended_user: %SeedFactory.Command{
@@ -193,7 +197,6 @@ defmodule SeedFactory.SchemaTest do
         },
         producing_instructions: [],
         required_entities: %{profile: MapSet.new([]), user: MapSet.new([:suspended])},
-        resolve: &SchemaExample.resolve_0_generated_2F21AB2A2BABAECF79F24982211F6ED0/1,
         updating_instructions: [
           %SeedFactory.UpdatingInstruction{entity: :profile, from: :profile}
         ]
@@ -220,7 +223,6 @@ defmodule SeedFactory.SchemaTest do
           }
         ],
         required_entities: %{approval_process: MapSet.new([])},
-        resolve: &SchemaExample.resolve_0_generated_224A074C182B8C840AB88365EA6AD318/1,
         updating_instructions: [
           %SeedFactory.UpdatingInstruction{
             entity: :approval_process,
@@ -245,7 +247,6 @@ defmodule SeedFactory.SchemaTest do
         },
         producing_instructions: [],
         required_entities: %{project: MapSet.new([])},
-        resolve: &SchemaExample.resolve_0_generated_C5D5A1080411FF3BC4635FE37A406122/1,
         updating_instructions: [
           %SeedFactory.UpdatingInstruction{entity: :project, from: :project}
         ]
@@ -267,7 +268,6 @@ defmodule SeedFactory.SchemaTest do
         },
         producing_instructions: [],
         required_entities: %{task: MapSet.new([])},
-        resolve: &SchemaExample.resolve_0_generated_D3E8714C9FE3F744E20FB2B7E89856C4/1,
         updating_instructions: [
           %SeedFactory.UpdatingInstruction{entity: :task, from: :task}
         ]
@@ -343,7 +343,6 @@ defmodule SeedFactory.SchemaTest do
           %SeedFactory.ProducingInstruction{entity: :profile, from: :profile}
         ],
         required_entities: %{office: MapSet.new([])},
-        resolve: &SchemaExample.resolve_0_generated_F03B563961F14FD60C2458326365D18E/1,
         updating_instructions: []
       },
       create_approved_candidate: %SeedFactory.Command{
@@ -361,7 +360,6 @@ defmodule SeedFactory.SchemaTest do
           }
         ],
         required_entities: %{},
-        resolve: &SchemaExample.resolve_0_generated_A9895133DCE87707119ADFBD53DE469C/1,
         updating_instructions: []
       },
       create_draft_project: %SeedFactory.Command{
@@ -393,7 +391,6 @@ defmodule SeedFactory.SchemaTest do
           %SeedFactory.ProducingInstruction{entity: :draft_project, from: :project}
         ],
         required_entities: %{office: MapSet.new([])},
-        resolve: &SchemaExample.resolve_0_generated_2740D56C444EAB483E6E223C0EA89586/1,
         updating_instructions: []
       },
       create_office: %SeedFactory.Command{
@@ -425,7 +422,6 @@ defmodule SeedFactory.SchemaTest do
           %SeedFactory.ProducingInstruction{entity: :office, from: :office}
         ],
         required_entities: %{org: MapSet.new([])},
-        resolve: &SchemaExample.resolve_0_generated_473AAE83EF4BBE14B6B0B4B415D9251A/1,
         updating_instructions: []
       },
       create_org: %SeedFactory.Command{
@@ -478,7 +474,6 @@ defmodule SeedFactory.SchemaTest do
           %SeedFactory.ProducingInstruction{entity: :org, from: :org}
         ],
         required_entities: %{},
-        resolve: &SchemaExample.resolve_0_generated_8EBDFE37F15A561AC04FAB5BA12B73C2/1,
         updating_instructions: []
       },
       create_task: %SeedFactory.Command{
@@ -500,7 +495,6 @@ defmodule SeedFactory.SchemaTest do
           %SeedFactory.ProducingInstruction{entity: :task, from: :task}
         ],
         required_entities: %{},
-        resolve: &SchemaExample.resolve_0_generated_0D507D35A926192FD24E8ADD63391E2D/1,
         updating_instructions: []
       },
       create_pending_user: %SeedFactory.Command{
@@ -553,7 +547,6 @@ defmodule SeedFactory.SchemaTest do
           %SeedFactory.ProducingInstruction{entity: :profile, from: :profile}
         ],
         required_entities: %{office: MapSet.new([])},
-        resolve: &SchemaExample.resolve_0_generated_9AC210B59D8F5815BEC1F491294AC2DC/1,
         updating_instructions: []
       },
       create_virtual_file: %SeedFactory.Command{
@@ -608,7 +601,6 @@ defmodule SeedFactory.SchemaTest do
           project: MapSet.new([:not_expired]),
           user: MapSet.new([:active, :admin])
         },
-        resolve: &SchemaExample.resolve_0_generated_CCCB3F865ADE169901D82CC5FEFF48D5/1,
         updating_instructions: [
           %SeedFactory.UpdatingInstruction{entity: :project, from: :project}
         ]
@@ -630,7 +622,6 @@ defmodule SeedFactory.SchemaTest do
         },
         producing_instructions: [],
         required_entities: %{user: MapSet.new([:active])},
-        resolve: &SchemaExample.resolve_0_generated_F67D69DD4258B25927201B14AD7C8876/1,
         updating_instructions: []
       },
       deliver_email: %SeedFactory.Command{
@@ -650,7 +641,6 @@ defmodule SeedFactory.SchemaTest do
         },
         producing_instructions: [],
         required_entities: %{email: MapSet.new([])},
-        resolve: &SchemaExample.resolve_0_generated_EAE9DEB149823F722DFFBC280AF6F0FC/1,
         updating_instructions: [
           %SeedFactory.UpdatingInstruction{entity: :email, from: :email}
         ]
@@ -688,7 +678,6 @@ defmodule SeedFactory.SchemaTest do
           }
         ],
         required_entities: %{office: MapSet.new([])},
-        resolve: &SchemaExample.resolve_0_generated_38AB9D561752710CA46AC0BFC6D5CDBA/1,
         updating_instructions: []
       },
       import_draft_project_from_third_party_service: %SeedFactory.Command{
@@ -724,7 +713,6 @@ defmodule SeedFactory.SchemaTest do
           }
         ],
         required_entities: %{office: MapSet.new([])},
-        resolve: &SchemaExample.resolve_0_generated_4AB4B53C6AC081BFDEC63D39CF58ED2E/1,
         updating_instructions: []
       },
       move_task_to_in_progress: %SeedFactory.Command{
@@ -744,7 +732,6 @@ defmodule SeedFactory.SchemaTest do
         },
         producing_instructions: [],
         required_entities: %{task: MapSet.new([])},
-        resolve: &SchemaExample.resolve_0_generated_FCA220C52D67D7C19C1604D0CA004185/1,
         updating_instructions: [
           %SeedFactory.UpdatingInstruction{entity: :task, from: :task}
         ]
@@ -799,7 +786,6 @@ defmodule SeedFactory.SchemaTest do
           %SeedFactory.ProducingInstruction{entity: :email, from: :email}
         ],
         required_entities: %{draft_project: MapSet.new([]), user: MapSet.new([:active])},
-        resolve: &SchemaExample.resolve_0_generated_C141818E4E88F27CFC2D528EE1E2B0FF/1,
         updating_instructions: []
       },
       raise_exception: %SeedFactory.Command{
@@ -808,7 +794,6 @@ defmodule SeedFactory.SchemaTest do
         params: %{},
         producing_instructions: [],
         required_entities: %{},
-        resolve: &SchemaExample.resolve_0_generated_719F75E74239275E263426292AF0551F/1,
         updating_instructions: [
           %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
         ]
@@ -819,7 +804,6 @@ defmodule SeedFactory.SchemaTest do
         params: %{},
         producing_instructions: [],
         required_entities: %{},
-        resolve: &SchemaExample.resolve_0_generated_0E0E10888E2AE53D322BB8BC68C9F05F/1,
         updating_instructions: [
           %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
         ]
@@ -843,7 +827,6 @@ defmodule SeedFactory.SchemaTest do
           %SeedFactory.ProducingInstruction{entity: :files_removal_task, from: :task}
         ],
         required_entities: %{profile: MapSet.new([:anonymized])},
-        resolve: &SchemaExample.resolve_0_generated_469E6B2E479D62A90FAB295422BE12C4/1,
         updating_instructions: []
       },
       start_approval_process: %SeedFactory.Command{
@@ -861,7 +844,67 @@ defmodule SeedFactory.SchemaTest do
           }
         ],
         required_entities: %{},
-        resolve: &SchemaExample.resolve_0_generated_7A4838E0C452DEA4E0FE3F06EE16AF6F/1,
+        updating_instructions: []
+      },
+      send_welcome_to_candidate: %SeedFactory.Command{
+        deleting_instructions: [],
+        name: :send_welcome_to_candidate,
+        params: %{
+          candidate_profile: %SeedFactory.Parameter{
+            entity: :candidate_profile,
+            generate: nil,
+            map: nil,
+            name: :candidate_profile,
+            params: %{},
+            type: :entity,
+            value: nil,
+            with_traits: nil
+          }
+        },
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{
+            entity: :candidate_welcome_notification,
+            from: :candidate_welcome_notification
+          }
+        ],
+        required_entities: %{candidate_profile: MapSet.new([])},
+        updating_instructions: []
+      },
+      send_welcome_to_candidate_v2: %SeedFactory.Command{
+        deleting_instructions: [],
+        name: :send_welcome_to_candidate_v2,
+        params: %{
+          candidate_profile: %SeedFactory.Parameter{
+            entity: :candidate_profile,
+            generate: nil,
+            map: nil,
+            name: :candidate_profile,
+            params: %{},
+            type: :entity,
+            value: nil,
+            with_traits: nil
+          }
+        },
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{
+            entity: :candidate_welcome_notification,
+            from: :candidate_welcome_notification
+          }
+        ],
+        required_entities: %{candidate_profile: MapSet.new([])},
+        updating_instructions: []
+      },
+      create_candidate_profile: %SeedFactory.Command{
+        deleting_instructions: [],
+        name: :create_candidate_profile,
+        params: %{},
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{
+            entity: :candidate_profile,
+            from: :candidate_profile
+          }
+        ],
+        required_entities: %{},
         updating_instructions: []
       },
       suspend_user: %SeedFactory.Command{
@@ -883,14 +926,12 @@ defmodule SeedFactory.SchemaTest do
           %SeedFactory.ProducingInstruction{entity: :email, from: :email}
         ],
         required_entities: %{user: MapSet.new([:active])},
-        resolve: &SchemaExample.resolve_0_generated_85888B7C671514955AB26CD5F639E2F3/1,
         updating_instructions: [
           %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
         ]
       },
       move_task_to_in_review: %SeedFactory.Command{
         name: :move_task_to_in_review,
-        resolve: &SchemaExample.resolve_0_generated_E21006AE7D1E787A2A1984B2F53F852C/1,
         params: %{
           task: %SeedFactory.Parameter{
             name: :task,
@@ -912,7 +953,6 @@ defmodule SeedFactory.SchemaTest do
       },
       bootstrap_blocked_pipeline: %SeedFactory.Command{
         name: :bootstrap_blocked_pipeline,
-        resolve: &SchemaExample.resolve_0_generated_C08613AA81D71D19649ACD4959BCC7FD/1,
         params: %{},
         producing_instructions: [
           %SeedFactory.ProducingInstruction{
@@ -926,7 +966,6 @@ defmodule SeedFactory.SchemaTest do
       },
       bootstrap_legacy_pipeline: %SeedFactory.Command{
         name: :bootstrap_legacy_pipeline,
-        resolve: &SchemaExample.resolve_0_generated_97BCE0A8433BAFE96A0CCFDF2DC78243/1,
         params: %{},
         producing_instructions: [
           %SeedFactory.ProducingInstruction{
@@ -940,7 +979,6 @@ defmodule SeedFactory.SchemaTest do
       },
       bootstrap_production_pipeline: %SeedFactory.Command{
         name: :bootstrap_production_pipeline,
-        resolve: &SchemaExample.resolve_0_generated_5A6A6BD7FB8D5C7E3484AB5766FE4AFB/1,
         params: %{},
         producing_instructions: [
           %SeedFactory.ProducingInstruction{
@@ -954,7 +992,6 @@ defmodule SeedFactory.SchemaTest do
       },
       bootstrap_sandbox_pipeline: %SeedFactory.Command{
         name: :bootstrap_sandbox_pipeline,
-        resolve: &SchemaExample.resolve_0_generated_531D13E399DD3CE104033886E87B3B8D/1,
         params: %{},
         producing_instructions: [
           %SeedFactory.ProducingInstruction{
@@ -968,7 +1005,6 @@ defmodule SeedFactory.SchemaTest do
       },
       complete_regional_validation: %SeedFactory.Command{
         name: :complete_regional_validation,
-        resolve: &SchemaExample.resolve_0_generated_410F0E884AAD26F0D3E4F6C3733DDBCB/1,
         params: %{
           integration_pipeline: %SeedFactory.Parameter{
             name: :integration_pipeline,
@@ -993,7 +1029,6 @@ defmodule SeedFactory.SchemaTest do
       },
       configure_project_quota: %SeedFactory.Command{
         name: :configure_project_quota,
-        resolve: &SchemaExample.resolve_0_generated_D2A920CA902CB9350A2C45E820AFF774/1,
         params: %{
           quota: %SeedFactory.Parameter{
             name: :quota,
@@ -1015,7 +1050,6 @@ defmodule SeedFactory.SchemaTest do
       },
       finalize_pipeline_launch: %SeedFactory.Command{
         name: :finalize_pipeline_launch,
-        resolve: &SchemaExample.resolve_0_generated_A30477274AD24466334E790BA225F9CE/1,
         params: %{
           integration_pipeline: %SeedFactory.Parameter{
             name: :integration_pipeline,
@@ -1042,7 +1076,6 @@ defmodule SeedFactory.SchemaTest do
       },
       promote_pipeline: %SeedFactory.Command{
         name: :promote_pipeline,
-        resolve: &SchemaExample.resolve_0_generated_196500BCBAE4FA99543ED34D2959F739/1,
         params: %{
           integration_pipeline: %SeedFactory.Parameter{
             name: :integration_pipeline,
@@ -1067,7 +1100,6 @@ defmodule SeedFactory.SchemaTest do
       },
       publish_launch_announcement: %SeedFactory.Command{
         name: :publish_launch_announcement,
-        resolve: &SchemaExample.resolve_0_generated_52B86E9701DEB46508104DCED0F94EE3/1,
         params: %{
           integration_pipeline: %SeedFactory.Parameter{
             name: :integration_pipeline,
@@ -1094,7 +1126,6 @@ defmodule SeedFactory.SchemaTest do
       },
       sign_off_compliance_from_blocked: %SeedFactory.Command{
         name: :sign_off_compliance_from_blocked,
-        resolve: &SchemaExample.resolve_0_generated_4C7E344685154AF41A02863BF6D9D2CA/1,
         params: %{
           integration_pipeline: %SeedFactory.Parameter{
             name: :integration_pipeline,
@@ -1119,7 +1150,6 @@ defmodule SeedFactory.SchemaTest do
       },
       sign_off_compliance_from_legacy: %SeedFactory.Command{
         name: :sign_off_compliance_from_legacy,
-        resolve: &SchemaExample.resolve_0_generated_4C7E344685154AF41A02863BF6D9D2CA/1,
         params: %{
           integration_pipeline: %SeedFactory.Parameter{
             name: :integration_pipeline,

@@ -668,6 +668,11 @@ defmodule SchemaExample do
     produce :candidate_profile
   end
 
+  command :create_candidate_profile do
+    resolve(fn _ -> {:ok, %{candidate_profile: :standalone_candidate_profile}} end)
+    produce :candidate_profile
+  end
+
   command :approve_candidate do
     param :approval_process, entity: :approval_process
 
@@ -680,7 +685,10 @@ defmodule SchemaExample do
   end
 
   command :create_approved_candidate do
-    resolve(fn _ -> {:ok, %{candidate_profile: :candidate_profile}} end)
+    resolve(fn _ ->
+      {:ok, %{candidate_profile: :candidate_profile, approved_candidate: :approved_candidate}}
+    end)
+
     produce :candidate_profile
     produce :approved_candidate
   end
@@ -691,6 +699,30 @@ defmodule SchemaExample do
 
   trait :approved_using_approval_process, :approved_candidate do
     exec :approve_candidate
+  end
+
+  trait :started, :approval_process do
+    exec :start_approval_process
+  end
+
+  command :send_welcome_to_candidate do
+    param :candidate_profile, entity: :candidate_profile
+
+    resolve(fn _args ->
+      {:ok, %{candidate_welcome_notification: :sent}}
+    end)
+
+    produce :candidate_welcome_notification
+  end
+
+  command :send_welcome_to_candidate_v2 do
+    param :candidate_profile, entity: :candidate_profile
+
+    resolve(fn _args ->
+      {:ok, %{candidate_welcome_notification: :sent_v2}}
+    end)
+
+    produce :candidate_welcome_notification
   end
 
   command :create_task do

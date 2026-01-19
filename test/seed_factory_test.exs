@@ -418,6 +418,45 @@ defmodule SeedFactoryTest do
       |> assert_trait(:user, [:suspended, :normal, :free_plan, :pending_skipped])
     end
 
+    # When a trait produces multiple entities (e.g. create_approved_candidate produces
+    # both :approved_candidate and :candidate_profile), and another command needs one of
+    # those secondary entities as a dependency, the system should reuse the command from
+    # the trait instead of creating a conflict group with all commands that can produce
+    # that entity.
+    test "trait producing multiple entities satisfies dependency for secondary entity", context do
+      {_context, diff} =
+        with_diff(context, fn ->
+          produce(context, [
+            :candidate_welcome_notification,
+            approved_candidate: [:approved_immediately]
+          ])
+        end)
+
+      assert diff == %{
+               added: [:approved_candidate, :candidate_profile, :candidate_welcome_notification],
+               deleted: [],
+               updated: []
+             }
+    end
+
+    test "multiple requested traits producing the same entity via different commands raises ConflictingTraitsError",
+         context do
+      error =
+        assert_raise SeedFactory.ConflictingTraitsError, fn ->
+          produce(context, [
+            :candidate_welcome_notification,
+            approval_process: [:started],
+            approved_candidate: [:approved_immediately]
+          ])
+        end
+
+      assert error.message == """
+             Multiple requested traits produce the same entity :candidate_profile via different commands:
+               - :create_approved_candidate (from traits [:approved_immediately])
+               - :start_approval_process (from traits [:started])
+             """
+    end
+
     test "same traits can be applied by multiple commands", context do
       context
       |> produce(user: [:normal, :pending_skipped])
