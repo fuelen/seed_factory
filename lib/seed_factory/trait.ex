@@ -1,6 +1,6 @@
 defmodule SeedFactory.Trait do
   @moduledoc false
-  @derive {Inspect, optional: [:from, :to]}
+  @derive {Inspect, optional: [:from, :to], except: [:__spark_metadata__]}
 
   defstruct [
     :name,

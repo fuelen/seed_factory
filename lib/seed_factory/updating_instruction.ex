@@ -1,5 +1,7 @@
 defmodule SeedFactory.UpdatingInstruction do
   @moduledoc false
+  @derive {Inspect, except: [:__spark_metadata__]}
+
   defstruct [:entity, :from, __spark_metadata__: nil]
 
   @schema [

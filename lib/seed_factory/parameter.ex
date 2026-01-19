@@ -1,5 +1,7 @@
 defmodule SeedFactory.Parameter do
   @moduledoc false
+  @derive {Inspect, except: [:__spark_metadata__]}
+
   defstruct [
     :name,
     :params,

@@ -1,5 +1,7 @@
 defmodule SeedFactory.IncludeSchema do
   @moduledoc false
+  @derive {Inspect, except: [:__spark_metadata__]}
+
   defstruct [:schema_module, __spark_metadata__: nil]
 
   @schema [
