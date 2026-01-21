@@ -58,8 +58,13 @@ defmodule SeedFactory.Context do
 
   def fetch_command!(context, command_name) do
     case Map.fetch(context.__seed_factory_meta__.commands, command_name) do
-      {:ok, command} -> command
-      :error -> raise SeedFactory.UnknownCommandError, command: command_name
+      {:ok, command} ->
+        command
+
+      :error ->
+        raise SeedFactory.UnknownCommandError,
+          command: command_name,
+          available: Map.keys(context.__seed_factory_meta__.commands)
     end
   end
 
@@ -73,7 +78,9 @@ defmodule SeedFactory.Context do
         command_names
 
       :error ->
-        raise SeedFactory.UnknownEntityError, entity: entity_name
+        raise SeedFactory.UnknownEntityError,
+          entity: entity_name,
+          available: Map.keys(context.__seed_factory_meta__.entities)
     end
   end
 
@@ -137,7 +144,9 @@ defmodule SeedFactory.Context do
   defp ensure_entities_exist_in_rebinding!(context, rebinding) do
     for {entity_name, _rebind_as} <- rebinding do
       unless has_entity?(context, entity_name) do
-        raise SeedFactory.UnknownEntityError, entity: entity_name
+        raise SeedFactory.UnknownEntityError,
+          entity: entity_name,
+          available: Map.keys(context.__seed_factory_meta__.entities)
       end
     end
   end

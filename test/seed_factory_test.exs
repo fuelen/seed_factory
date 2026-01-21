@@ -30,11 +30,13 @@ defmodule SeedFactoryTest do
   end
 
   test "rebind unknown entity", context do
-    assert_raise SeedFactory.UnknownEntityError, "Unknown entity :Office", fn ->
-      rebind(context, [Office: :office1], fn context ->
-        exec(context, :create_office, name: "My Office #1")
-      end)
-    end
+    assert_raise SeedFactory.UnknownEntityError,
+                 "unknown entity :Office, did you mean :office?",
+                 fn ->
+                   rebind(context, [Office: :office1], fn context ->
+                     exec(context, :create_office, name: "My Office #1")
+                   end)
+                 end
   end
 
   describe "nested rebinding" do
@@ -121,7 +123,7 @@ defmodule SeedFactoryTest do
     {user, context} = Map.pop!(context, :user)
 
     assert_raise SeedFactory.EntityNotFoundError,
-                 "Cannot update entity :user while executing :activate_user: key :user doesn't exist in the context",
+                 "cannot update entity :user while executing :activate_user: key :user doesn't exist in the context",
                  fn ->
                    exec(context, :activate_user, user: user)
                  end
@@ -145,7 +147,7 @@ defmodule SeedFactoryTest do
 
     # Maybe, later deleting of non-existing values will be noop, but for the time being the operation is restricted
     assert_raise SeedFactory.EntityNotFoundError,
-                 "Cannot delete entity :draft_project from the context while executing :publish_project: key :draft_project doesn't exist",
+                 "cannot delete entity :draft_project while executing :publish_project: key :draft_project doesn't exist in the context",
                  fn ->
                    exec(context, :publish_project, project: draft_project)
                  end
@@ -162,7 +164,7 @@ defmodule SeedFactoryTest do
   end
 
   test "produce unknown entity", context do
-    assert_raise SeedFactory.UnknownEntityError, "Unknown entity :unknown_entity", fn ->
+    assert_raise SeedFactory.UnknownEntityError, "unknown entity :unknown_entity", fn ->
       produce(context, :unknown_entity)
     end
   end
@@ -450,11 +452,10 @@ defmodule SeedFactoryTest do
           ])
         end
 
-      assert error.message == """
-             Multiple requested traits produce the same entity :candidate_profile via different commands:
-               - :create_approved_candidate (from traits [:approved_immediately])
-               - :start_approval_process (from traits [:started])
-             """
+      assert error.message ==
+               "multiple requested traits produce the same entity :candidate_profile via different commands:\n" <>
+                 "  - :create_approved_candidate (from traits [:approved_immediately])\n" <>
+                 "  - :start_approval_process (from traits [:started])"
     end
 
     test "same traits can be applied by multiple commands", context do
@@ -486,8 +487,8 @@ defmodule SeedFactoryTest do
 
   test "produce entity with traits when it was already created without traits", context do
     assert_raise SeedFactory.TraitResolutionError,
-                 "Cannot satisfy trait :contacts_confirmed for entity :profile (requested trait).\n" <>
-                   "- Traits to previously executed command :create_pending_user do not match:\n" <>
+                 "cannot satisfy trait :contacts_confirmed for entity :profile (requested trait)\n" <>
+                   "- traits of previously executed command :create_pending_user do not match:\n" <>
                    "    previously applied traits: []\n" <>
                    "    specified trait: :contacts_confirmed",
                  fn ->
@@ -558,7 +559,7 @@ defmodule SeedFactoryTest do
 
   test "exec unknown command", context do
     assert_raise SeedFactory.UnknownCommandError,
-                 "Unknown command :unknown_command",
+                 "unknown command :unknown_command",
                  fn ->
                    exec(context, :unknown_command)
                  end
@@ -567,7 +568,7 @@ defmodule SeedFactoryTest do
   test "double execution of the same command - don't report current traits for entities without traits",
        context do
     assert_raise SeedFactory.EntityAlreadyExistsError,
-                 "Cannot put entity :org to the context while executing :create_org: key :org already exists.",
+                 "cannot put entity :org to the context while executing :create_org: key :org already exists",
                  fn ->
                    context
                    |> exec(:create_org)
@@ -578,11 +579,8 @@ defmodule SeedFactoryTest do
   test "double execution of the same command - report current traits for entities with traits",
        context do
     assert_raise SeedFactory.EntityAlreadyExistsError,
-                 """
-                 Cannot put entity :task to the context while executing :create_task: key :task already exists.
-
-                 Current :task traits: [:todo]
-                 """,
+                 "cannot put entity :task to the context while executing :create_task: key :task already exists\n\n" <>
+                   "current :task traits: [:todo]",
                  fn ->
                    context
                    |> exec(:create_task)
@@ -755,8 +753,8 @@ defmodule SeedFactoryTest do
 
     test "specify traits which conflict with previously applied traits", context do
       assert_raise SeedFactory.TraitResolutionError,
-                   "Cannot satisfy trait :normal for entity :user (requested trait).\n" <>
-                     "- Traits to previously executed command :create_pending_user do not match:\n" <>
+                   "cannot satisfy trait :normal for entity :user (requested trait)\n" <>
+                     "- traits of previously executed command :create_pending_user do not match:\n" <>
                      "    previously applied traits: [:unknown_plan, :admin, :pending]\n" <>
                      "    specified trait: :normal",
                    fn ->
@@ -767,8 +765,8 @@ defmodule SeedFactoryTest do
                    end
 
       assert_raise SeedFactory.TraitResolutionError,
-                   "Cannot satisfy trait :not_expired for entity :project (trait required by :create_virtual_file command).\n" <>
-                     "- Traits to previously executed command :publish_project do not match:\n" <>
+                   "cannot satisfy trait :not_expired for entity :project (trait required by :create_virtual_file command)\n" <>
+                     "- traits of previously executed command :publish_project do not match:\n" <>
                      "    previously applied traits: [:expired]\n" <>
                      "    trait required by :create_virtual_file command: :not_expired",
                    fn ->
@@ -780,13 +778,10 @@ defmodule SeedFactoryTest do
 
     test "commands that remove entities should be executed at the end", context do
       # it is important, that :publish_project command is executed before :suspend_user, so we have expected error
-      # and not "Cannot put entity :email to the context while executing :publish_project: key :email already exists"
+      # and not "cannot put entity :email to the context while executing :publish_project: key :email already exists"
       assert_raise SeedFactory.EntityAlreadyExistsError,
-                   """
-                   Cannot put entity :email to the context while executing :suspend_user: key :email already exists.
-
-                   Current :email traits: [:notification_about_published_project]
-                   """,
+                   "cannot put entity :email to the context while executing :suspend_user: key :email already exists\n\n" <>
+                     "current :email traits: [:notification_about_published_project]",
                    fn ->
                      produce(context, [:project, user: [:suspended]])
                    end
@@ -808,19 +803,16 @@ defmodule SeedFactoryTest do
       # :project requires active user.
       # in order to :activate user, we execute :activate_user command to move user from :pending to :active status
       assert_raise SeedFactory.TraitRestrictionConflictError,
-                   """
-                   Cannot apply traits [:active] to :user as a requirement for :publish_project command.
-                   The entity was requested with the following traits: [:pending, :admin].
-                   """,
+                   "cannot apply traits [:active] to :user as a requirement for :publish_project command, " <>
+                     "the entity was requested with the following traits: [:pending, :admin]",
                    fn ->
                      produce(context, [:project, user: [:pending, :admin]])
                    end
 
       assert_raise SeedFactory.TraitRemovedByCommandError,
-                   """
-                   Cannot apply traits [:pending] to :user1 because they were removed by the command :activate_user.
-                   Current traits: [:normal, :free_plan, :active].
-                   """,
+                   "cannot apply traits [:pending] to :user1 (entity :user) " <>
+                     "because they were removed by command :activate_user, " <>
+                     "current traits: [:normal, :free_plan, :active]",
                    fn ->
                      context
                      |> produce([:project, user: :user1])
@@ -828,11 +820,9 @@ defmodule SeedFactoryTest do
                    end
 
       assert_raise SeedFactory.TraitPathNotFoundError,
-                   """
-                   Cannot apply traits [:pending] to :user.
-                   There is no path from traits [:active].
-                   Current traits: [:free_plan, :normal, :pending_skipped, :active].
-                   """,
+                   "cannot apply traits [:pending] to :user, " <>
+                     "there is no path from traits [:active], " <>
+                     "current traits: [:free_plan, :normal, :pending_skipped, :active]",
                    fn ->
                      context
                      |> exec(:create_active_user)
@@ -843,11 +833,8 @@ defmodule SeedFactoryTest do
     test "raise a meaningful error when produced entity has been already produced by another command",
          context do
       assert_raise SeedFactory.EntityAlreadyExistsError,
-                   """
-                   Cannot put entity :email to the context while executing :publish_project: key :email already exists.
-
-                   Current :email traits: [:notification_about_suspended_user]
-                   """,
+                   "cannot put entity :email to the context while executing :publish_project: key :email already exists\n\n" <>
+                     "current :email traits: [:notification_about_suspended_user]",
                    fn ->
                      context
                      |> produce(user: [:suspended])
@@ -887,20 +874,20 @@ defmodule SeedFactoryTest do
     end
 
     test "entity doesn't have traits", context do
-      assert_raise SeedFactory.TraitNotFoundError, "Entity :org doesn't have traits", fn ->
+      assert_raise SeedFactory.TraitNotFoundError, "entity :org has no defined traits", fn ->
         produce(context, org: [:something])
       end
     end
 
     test "unknown traits", context do
       assert_raise SeedFactory.UnknownTraitError,
-                   "Entity :user doesn't have trait :something",
+                   "entity :user doesn't have trait :something",
                    fn ->
                      produce(context, user: [:something])
                    end
 
       assert_raise SeedFactory.UnknownTraitError,
-                   "Entity :user doesn't have trait :something",
+                   "entity :user doesn't have trait :something",
                    fn ->
                      context
                      |> produce(user: [:pending])
@@ -1077,8 +1064,8 @@ defmodule SeedFactoryTest do
     test "raises when conflicting traits rely on rejected commands" do
       expected =
         """
-        Cannot satisfy trait :production_ready for entity :integration_pipeline (requested trait).
-        - Candidate command :bootstrap_production_pipeline was previously rejected during conflict resolution.
+        cannot satisfy trait :production_ready for entity :integration_pipeline (requested trait)
+        - candidate command :bootstrap_production_pipeline was previously rejected during conflict resolution
         """
         |> String.trim_trailing()
 
@@ -1092,10 +1079,10 @@ defmodule SeedFactoryTest do
     test "raises when transition trait prerequisites were rejected" do
       expected =
         """
-        Cannot satisfy trait :deployment_promoted for entity :integration_pipeline (requested trait).
-        - Candidate command :promote_pipeline was previously rejected during conflict resolution.
-        - Prerequisite trait :sandbox_ready required by :deployment_promoted cannot be satisfied.
-          - Candidate command :bootstrap_sandbox_pipeline was previously rejected during conflict resolution.
+        cannot satisfy trait :deployment_promoted for entity :integration_pipeline (requested trait)
+        - candidate command :promote_pipeline was previously rejected during conflict resolution
+        - prerequisite trait :sandbox_ready required by :deployment_promoted cannot be satisfied
+          - candidate command :bootstrap_sandbox_pipeline was previously rejected during conflict resolution
         """
         |> String.trim_trailing()
 
@@ -1109,10 +1096,10 @@ defmodule SeedFactoryTest do
     test "raises when command requires an unsatisfiable trait" do
       expected =
         """
-        Cannot satisfy trait :deployment_promoted for entity :integration_pipeline (requested trait).
-        - Candidate command :promote_pipeline was previously rejected during conflict resolution.
-        - Prerequisite trait :sandbox_ready required by :deployment_promoted cannot be satisfied.
-          - Candidate command :bootstrap_sandbox_pipeline was previously rejected during conflict resolution.
+        cannot satisfy trait :deployment_promoted for entity :integration_pipeline (requested trait)
+        - candidate command :promote_pipeline was previously rejected during conflict resolution
+        - prerequisite trait :sandbox_ready required by :deployment_promoted cannot be satisfied
+          - candidate command :bootstrap_sandbox_pipeline was previously rejected during conflict resolution
         """
         |> String.trim_trailing()
 
@@ -1133,12 +1120,12 @@ defmodule SeedFactoryTest do
 
       assert String.contains?(
                error.message,
-               "- All candidate commands [:sign_off_compliance_from_legacy, :sign_off_compliance_from_blocked] were previously rejected during conflict resolution."
+               "- all candidate commands [:sign_off_compliance_from_legacy, :sign_off_compliance_from_blocked] were previously rejected during conflict resolution"
              )
 
       assert String.contains?(
                error.message,
-               "- Prerequisite trait :blocked_ready required by :compliance_signed_off cannot be satisfied."
+               "- prerequisite trait :blocked_ready required by :compliance_signed_off cannot be satisfied"
              )
     end
 
@@ -1152,10 +1139,10 @@ defmodule SeedFactoryTest do
 
       expected =
         """
-        Cannot satisfy trait :deployment_promoted for entity :integration_pipeline (trait required by :publish_launch_announcement command).
-        - Candidate command :promote_pipeline was previously rejected during conflict resolution.
-        - Prerequisite trait :sandbox_ready required by :deployment_promoted cannot be satisfied.
-          - Candidate command :bootstrap_sandbox_pipeline was previously rejected during conflict resolution.
+        cannot satisfy trait :deployment_promoted for entity :integration_pipeline (trait required by :publish_launch_announcement command)
+        - candidate command :promote_pipeline was previously rejected during conflict resolution
+        - prerequisite trait :sandbox_ready required by :deployment_promoted cannot be satisfied
+          - candidate command :bootstrap_sandbox_pipeline was previously rejected during conflict resolution
         """
         |> String.trim_trailing()
 
@@ -1172,12 +1159,12 @@ defmodule SeedFactoryTest do
 
       expected =
         """
-        Cannot satisfy trait :compliance_signed_off for entity :integration_pipeline (requested trait).
-        - All candidate commands [:sign_off_compliance_from_legacy, :sign_off_compliance_from_blocked] were previously rejected during conflict resolution.
-        - Prerequisite trait :legacy_ready required by :compliance_signed_off cannot be satisfied.
-          - Candidate command :bootstrap_legacy_pipeline was previously rejected during conflict resolution.
-        - Prerequisite trait :blocked_ready required by :compliance_signed_off cannot be satisfied.
-          - Candidate command :bootstrap_blocked_pipeline was previously rejected during conflict resolution.
+        cannot satisfy trait :compliance_signed_off for entity :integration_pipeline (requested trait)
+        - all candidate commands [:sign_off_compliance_from_legacy, :sign_off_compliance_from_blocked] were previously rejected during conflict resolution
+        - prerequisite trait :legacy_ready required by :compliance_signed_off cannot be satisfied
+          - candidate command :bootstrap_legacy_pipeline was previously rejected during conflict resolution
+        - prerequisite trait :blocked_ready required by :compliance_signed_off cannot be satisfied
+          - candidate command :bootstrap_blocked_pipeline was previously rejected during conflict resolution
         """
         |> String.trim_trailing()
 

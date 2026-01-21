@@ -1,22 +1,64 @@
+defmodule SeedFactory.DidYouMean do
+  @moduledoc false
+
+  @threshold 0.77
+
+  def suggest(name, candidates) when is_atom(name) do
+    name
+    |> Atom.to_string()
+    |> suggest(Enum.map(candidates, &Atom.to_string/1))
+    |> case do
+      nil -> nil
+      suggestion -> String.to_existing_atom(suggestion)
+    end
+  end
+
+  def suggest(name, candidates) when is_binary(name) do
+    candidates
+    |> Enum.map(&{&1, String.jaro_distance(name, &1)})
+    |> Enum.filter(fn {_, score} -> score >= @threshold end)
+    |> Enum.max_by(fn {_, score} -> score end, fn -> nil end)
+    |> case do
+      nil -> nil
+      {suggestion, _score} -> suggestion
+    end
+  end
+
+  def format_suggestion(nil), do: ""
+  def format_suggestion(suggestion), do: ", did you mean #{inspect(suggestion)}?"
+end
+
 defmodule SeedFactory.UnknownEntityError do
-  defexception [:message, :entity]
+  defexception [:message, :entity, :suggestion]
 
   def exception(opts) when is_list(opts) do
     entity = Keyword.fetch!(opts, :entity)
-    message = "Unknown entity #{inspect(entity)}"
+    available = Keyword.fetch!(opts, :available)
 
-    %__MODULE__{message: message, entity: entity}
+    suggestion = SeedFactory.DidYouMean.suggest(entity, available)
+
+    message =
+      "unknown entity #{inspect(entity)}" <>
+        SeedFactory.DidYouMean.format_suggestion(suggestion)
+
+    %__MODULE__{message: message, entity: entity, suggestion: suggestion}
   end
 end
 
 defmodule SeedFactory.UnknownCommandError do
-  defexception [:message, :command]
+  defexception [:message, :command, :suggestion]
 
   def exception(opts) when is_list(opts) do
     command = Keyword.fetch!(opts, :command)
-    message = "Unknown command #{inspect(command)}"
+    available = Keyword.fetch!(opts, :available)
 
-    %__MODULE__{message: message, command: command}
+    suggestion = SeedFactory.DidYouMean.suggest(command, available)
+
+    message =
+      "unknown command #{inspect(command)}" <>
+        SeedFactory.DidYouMean.format_suggestion(suggestion)
+
+    %__MODULE__{message: message, command: command, suggestion: suggestion}
   end
 end
 
@@ -25,7 +67,7 @@ defmodule SeedFactory.TraitNotFoundError do
 
   def exception(opts) when is_list(opts) do
     entity = Keyword.fetch!(opts, :entity)
-    message = "Entity #{inspect(entity)} doesn't have traits"
+    message = "entity #{inspect(entity)} has no defined traits"
 
     %__MODULE__{message: message, entity: entity}
   end
@@ -41,13 +83,14 @@ defmodule SeedFactory.EntityAlreadyExistsError do
     traits = Keyword.fetch!(opts, :traits)
 
     message_base =
-      "Cannot put entity #{inspect(entity)} to the context while executing #{inspect(command)}: key #{inspect(binding)} already exists."
+      "cannot put entity #{inspect(entity)} to the context while executing #{inspect(command)}: " <>
+        "key #{inspect(binding)} already exists"
 
     message =
       if traits == [] do
         message_base
       else
-        "#{message_base}\n\nCurrent #{inspect(binding)} traits: #{inspect(traits)}\n"
+        "#{message_base}\n\ncurrent #{inspect(binding)} traits: #{inspect(traits)}"
       end
 
     %__MODULE__{
@@ -70,11 +113,8 @@ defmodule SeedFactory.EntityNotFoundError do
     operation = Keyword.fetch!(opts, :operation)
 
     message =
-      if operation == :delete do
-        "Cannot #{operation} entity #{inspect(entity)} from the context while executing #{inspect(command)}: key #{inspect(binding)} doesn't exist"
-      else
-        "Cannot #{operation} entity #{inspect(entity)} while executing #{inspect(command)}: key #{inspect(binding)} doesn't exist in the context"
-      end
+      "cannot #{operation} entity #{inspect(entity)} while executing #{inspect(command)}: " <>
+        "key #{inspect(binding)} doesn't exist in the context"
 
     %__MODULE__{
       message: message,
@@ -96,10 +136,9 @@ defmodule SeedFactory.TraitRestrictionConflictError do
     required_by = Keyword.fetch!(opts, :required_by)
     requested_traits = Keyword.fetch!(opts, :requested_traits)
 
-    message = """
-    Cannot apply traits #{inspect(traits)} to #{inspect(binding)} as a requirement for #{inspect(required_by)} command.
-    The entity was requested with the following traits: #{inspect(requested_traits)}.
-    """
+    message =
+      "cannot apply traits #{inspect(traits)} to #{inspect(binding)} as a requirement for #{inspect(required_by)} command, " <>
+        "the entity was requested with the following traits: #{inspect(requested_traits)}"
 
     %__MODULE__{
       message: message,
@@ -113,63 +152,89 @@ defmodule SeedFactory.TraitRestrictionConflictError do
 end
 
 defmodule SeedFactory.TraitPathNotFoundError do
-  defexception [:message, :binding, :required_traits, :conflicting_traits, :current_traits]
+  defexception [
+    :message,
+    :entity,
+    :binding,
+    :required_traits,
+    :conflicting_traits,
+    :current_traits
+  ]
 
   def exception(opts) when is_list(opts) do
+    entity = Keyword.fetch!(opts, :entity)
     binding = Keyword.fetch!(opts, :binding)
     required_traits = Keyword.fetch!(opts, :required_traits)
     conflicting_traits = Keyword.fetch!(opts, :conflicting_traits)
     current_traits = Keyword.fetch!(opts, :current_traits)
 
-    message = """
-    Cannot apply traits #{inspect(required_traits)} to #{inspect(binding)}.
-    There is no path from traits #{inspect(conflicting_traits)}.
-    Current traits: #{inspect(current_traits)}.
-    """
+    binding_label = format_binding(entity, binding)
+
+    message =
+      "cannot apply traits #{inspect(required_traits)} to #{binding_label}, " <>
+        "there is no path from traits #{inspect(conflicting_traits)}, " <>
+        "current traits: #{inspect(current_traits)}"
 
     %__MODULE__{
       message: message,
+      entity: entity,
       binding: binding,
       required_traits: required_traits,
       conflicting_traits: conflicting_traits,
       current_traits: current_traits
     }
   end
+
+  defp format_binding(entity, binding) when entity == binding, do: inspect(binding)
+  defp format_binding(entity, binding), do: "#{inspect(binding)} (entity #{inspect(entity)})"
 end
 
 defmodule SeedFactory.TraitRemovedByCommandError do
-  defexception [:message, :binding, :removed_traits, :command, :current_traits]
+  defexception [:message, :entity, :binding, :removed_traits, :command, :current_traits]
 
   def exception(opts) when is_list(opts) do
+    entity = Keyword.fetch!(opts, :entity)
     binding = Keyword.fetch!(opts, :binding)
     removed_traits = Keyword.fetch!(opts, :removed_traits)
     command = Keyword.fetch!(opts, :command)
     current_traits = Keyword.fetch!(opts, :current_traits)
 
-    message = """
-    Cannot apply traits #{inspect(removed_traits)} to #{inspect(binding)} because they were removed by the command #{inspect(command)}.
-    Current traits: #{inspect(current_traits)}.
-    """
+    binding_label = format_binding(entity, binding)
+
+    message =
+      "cannot apply traits #{inspect(removed_traits)} to #{binding_label} " <>
+        "because they were removed by command #{inspect(command)}, " <>
+        "current traits: #{inspect(current_traits)}"
 
     %__MODULE__{
       message: message,
+      entity: entity,
       binding: binding,
       removed_traits: removed_traits,
       command: command,
       current_traits: current_traits
     }
   end
+
+  defp format_binding(entity, binding) when entity == binding, do: inspect(binding)
+  defp format_binding(entity, binding), do: "#{inspect(binding)} (entity #{inspect(entity)})"
 end
 
 defmodule SeedFactory.UnknownTraitError do
-  defexception [:message, :entity, :trait]
+  defexception [:message, :entity, :trait, :suggestion]
 
   def exception(opts) when is_list(opts) do
     entity = Keyword.fetch!(opts, :entity)
     trait = Keyword.fetch!(opts, :trait)
-    message = "Entity #{inspect(entity)} doesn't have trait #{inspect(trait)}"
+    available = Keyword.fetch!(opts, :available)
 
-    %__MODULE__{message: message, entity: entity, trait: trait}
+    suggestion = SeedFactory.DidYouMean.suggest(trait, available)
+
+    message =
+      "entity #{inspect(entity)} doesn't have trait #{inspect(trait)}" <>
+        SeedFactory.DidYouMean.format_suggestion(suggestion)
+
+    %__MODULE__{message: message, entity: entity, trait: trait, suggestion: suggestion}
   end
 end
 
@@ -205,7 +270,7 @@ defmodule SeedFactory.TraitResolutionError do
       |> reason_lines(0)
       |> Enum.join("\n")
 
-    "Cannot satisfy trait #{inspect(trait_name)} for entity #{inspect(entity_name)} (#{context_label}).\n" <>
+    "cannot satisfy trait #{inspect(trait_name)} for entity #{inspect(entity_name)} (#{context_label})\n" <>
       detail
   end
 
@@ -215,14 +280,14 @@ defmodule SeedFactory.TraitResolutionError do
     case unique_commands do
       [single] ->
         [
-          "#{indent_prefix(indent)}- Candidate command #{inspect(single)} was previously rejected during conflict resolution."
+          "#{indent_prefix(indent)}- candidate command #{inspect(single)} was previously rejected during conflict resolution"
         ]
 
       multiple ->
         commands = multiple |> Enum.map(&inspect/1) |> Enum.join(", ")
 
         [
-          "#{indent_prefix(indent)}- All candidate commands [#{commands}] were previously rejected during conflict resolution."
+          "#{indent_prefix(indent)}- all candidate commands [#{commands}] were previously rejected during conflict resolution"
         ]
     end
   end
@@ -232,7 +297,7 @@ defmodule SeedFactory.TraitResolutionError do
          indent
        ) do
     [
-      "#{indent_prefix(indent)}- Prerequisite trait #{inspect(prerequisite)} required by #{inspect(trait_name)} cannot be satisfied."
+      "#{indent_prefix(indent)}- prerequisite trait #{inspect(prerequisite)} required by #{inspect(trait_name)} cannot be satisfied"
     ] ++ reason_lines(reason, indent + 2)
   end
 
@@ -244,7 +309,7 @@ defmodule SeedFactory.TraitResolutionError do
       end
 
     [
-      "#{indent_prefix(indent)}- Traits to previously executed command #{inspect(trait.exec_step.command_name)} do not match:",
+      "#{indent_prefix(indent)}- traits of previously executed command #{inspect(trait.exec_step.command_name)} do not match:",
       "#{indent_prefix(indent + 4)}previously applied traits: #{inspect(added)}",
       "#{indent_prefix(indent + 4)}#{label}: #{inspect(trait.name)}"
     ]
@@ -280,12 +345,10 @@ defmodule SeedFactory.ConflictingTraitsError do
           end)
           |> Enum.join("\n")
 
-        """
-        Multiple requested traits produce the same entity #{inspect(entity)} via different commands:
-        #{commands_description}
-        """
+        "multiple requested traits produce the same entity #{inspect(entity)} via different commands:\n" <>
+          commands_description
       end)
-      |> Enum.join("\n")
+      |> Enum.join("\n\n")
 
     %__MODULE__{
       message: message,

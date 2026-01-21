@@ -112,7 +112,10 @@ defmodule SeedFactory.Requirements.Restrictions do
           traits
 
         :error ->
-          raise SeedFactory.UnknownTraitError, entity: entity_name, trait: trait_name
+          raise SeedFactory.UnknownTraitError,
+            entity: entity_name,
+            trait: trait_name,
+            available: Map.keys(traits_by_name)
       end
     end)
   end
@@ -188,6 +191,7 @@ defmodule SeedFactory.Requirements.Restrictions do
 
       trail ->
         do_ensure_current_trait_names_do_not_conflict_with_required_trait_names!(
+          entity_name,
           subsequent_traits,
           required_trait_names,
           binding_name,
@@ -198,6 +202,7 @@ defmodule SeedFactory.Requirements.Restrictions do
   end
 
   defp do_ensure_current_trait_names_do_not_conflict_with_required_trait_names!(
+         entity_name,
          subsequent_traits,
          required_trait_names,
          binding_name,
@@ -220,6 +225,7 @@ defmodule SeedFactory.Requirements.Restrictions do
       case trail_analysis do
         nil ->
           raise SeedFactory.TraitPathNotFoundError,
+            entity: entity_name,
             binding: binding_name,
             required_traits: required_trait_names,
             conflicting_traits: intersection,
@@ -227,6 +233,7 @@ defmodule SeedFactory.Requirements.Restrictions do
 
         {command_name, removed_traits} ->
           raise SeedFactory.TraitRemovedByCommandError,
+            entity: entity_name,
             binding: binding_name,
             removed_traits: removed_traits,
             command: command_name,
