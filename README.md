@@ -9,8 +9,9 @@
 
 A toolkit for test data generation.
 
-The main idea of `SeedFactory` is to generate data in tests according to your application business logic (read as context functions if you use [Phoenix Contexts](https://hexdocs.pm/phoenix/contexts.html)) whenever it is possible and avoid direct inserts to the database (as opposed to `ex_machina`).
+The main idea of `SeedFactory` is to generate data in tests according to your application business logic (read as context functions if you use [Phoenix Contexts](https://hexdocs.pm/phoenix/contexts.html)) whenever possible and avoid direct inserts to the database (as opposed to `ex_machina`).
 This approach allows you to minimize testing of invalid states as you're not forced to keep complex database structure in your head in order to prepare test data.
+Dependent entities are resolved and created automatically, so you can focus on what matters for your test.
 The library is completely agnostic to the database toolkit.
 
 See docs for details <https://hexdocs.pm/seed_factory>.
@@ -179,4 +180,46 @@ defmodule MyApp.MyTest do
     end
   end
 end
+```
+
+### Advanced features
+
+#### Reusing dependencies with `pre_exec` / `pre_produce`
+
+Create dependencies without executing the command itself. Useful when you need multiple variations sharing the same base:
+
+```elixir
+# Create company without creating user
+ctx = pre_produce(ctx, :user)
+
+# Now create multiple users in the same company
+%{user: user1} = produce(ctx, :user)
+%{user: user2} = produce(ctx, :user)
+# Both users belong to the same company
+```
+
+#### Dynamic trait matching with `args_match` and `generate_args`
+
+For complex trait conditions that can't be expressed with simple `args_pattern`, use function-based matching:
+
+```elixir
+trait :not_expired, :subscription do
+  exec :create_subscription do
+    args_match(fn args -> Date.compare(args.expires_at, Date.utc_today()) == :gt end)
+    generate_args(fn -> %{expires_at: Date.add(Date.utc_today(), 30)} end)
+  end
+end
+```
+
+#### Trail tracking
+
+The context maintains a history of how each entity was created and modified. Useful for debugging:
+
+```elixir
+ctx = produce(ctx, user: [:pending, :active])
+IO.inspect(ctx.__seed_factory_meta__)
+# #SeedFactory.Meta<
+#   current_traits: %{user: [:active, :normal]},
+#   trails: %{user: #trail[create_user: +[:pending, :normal] -> activate_user: +[:active] -[:pending]]}
+# >
 ```
