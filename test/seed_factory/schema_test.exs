@@ -1796,5 +1796,84 @@ defmodule SeedFactory.SchemaTest do
         end
       )
     end
+
+    test "raises when from references a non-existent trait" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> advanced -> thing defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          unknown trait :nonexistent_trait in `from` option
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_thing do
+              resolve(fn _ -> {:ok, %{thing: %{id: 1}}} end)
+              produce :thing
+            end
+
+            command :upgrade_thing do
+              param :thing, entity: :thing
+              resolve(fn _ -> {:ok, %{thing: %{id: 1}}} end)
+              update :thing
+            end
+
+            trait :initial, :thing do
+              exec :create_thing
+            end
+
+            trait :advanced, :thing do
+              from :nonexistent_trait
+              exec :upgrade_thing
+            end
+          end
+        end
+      )
+    end
+
+    test "raises when from references a trait from different entity" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> thing_advanced -> thing defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          trait :other_initial in `from` option belongs to entity :other, not :thing
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_thing do
+              resolve(fn _ -> {:ok, %{thing: %{id: 1}}} end)
+              produce :thing
+            end
+
+            command :create_other do
+              resolve(fn _ -> {:ok, %{other: %{id: 1}}} end)
+              produce :other
+            end
+
+            command :upgrade_thing do
+              param :thing, entity: :thing
+              resolve(fn _ -> {:ok, %{thing: %{id: 1}}} end)
+              update :thing
+            end
+
+            trait :thing_initial, :thing do
+              exec :create_thing
+            end
+
+            trait :other_initial, :other do
+              exec :create_other
+            end
+
+            trait :thing_advanced, :thing do
+              from :other_initial
+              exec :upgrade_thing
+            end
+          end
+        end
+      )
+    end
   end
 end

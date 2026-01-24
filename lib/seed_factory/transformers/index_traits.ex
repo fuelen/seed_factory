@@ -12,15 +12,19 @@ defmodule SeedFactory.Transformers.IndexTraits do
   end
 
   def transform(dsl_state) do
-    traits =
+    traits_by_entity =
       dsl_state
       |> Transformer.get_persisted(:root)
       |> Enum.filter(&is_struct(&1, SeedFactory.Trait))
       |> Enum.group_by(& &1.entity)
+
+    traits =
+      traits_by_entity
       |> Map.new(fn {entity, traits} ->
         ensure_known_entity(entity, hd(traits), dsl_state)
         ensure_unique_names(traits, entity)
         ensure_traits_have_valid_commands(entity, traits, dsl_state)
+        ensure_valid_from_references(entity, traits, traits_by_entity)
         traits = populate_to_field(traits)
 
         {entity,
@@ -132,5 +136,84 @@ defmodule SeedFactory.Transformers.IndexTraits do
           message: "duplicated trait",
           location: Spark.Dsl.Entity.anno(second)
     end)
+  end
+
+  defp ensure_valid_from_references(entity, traits, traits_by_entity) do
+    trait_names_for_entity = MapSet.new(traits, & &1.name)
+
+    trait_name_to_entity =
+      traits_by_entity
+      |> Enum.flat_map(fn {owner_entity, entity_traits} ->
+        Enum.map(entity_traits, fn trait -> {trait.name, owner_entity} end)
+      end)
+      |> Map.new()
+
+    Enum.each(traits, fn trait ->
+      validate_from_references(trait, entity, trait_names_for_entity, trait_name_to_entity)
+    end)
+  end
+
+  defp validate_from_references(%{from: nil}, _entity, _valid_trait_names, _trait_name_to_entity),
+    do: :ok
+
+  defp validate_from_references(
+         %{from: from_trait_names} = trait,
+         entity,
+         valid_trait_names,
+         trait_name_to_entity
+       )
+       when is_list(from_trait_names) do
+    Enum.each(from_trait_names, fn from_trait_name ->
+      validate_single_from_reference(
+        trait,
+        entity,
+        from_trait_name,
+        valid_trait_names,
+        trait_name_to_entity
+      )
+    end)
+  end
+
+  defp validate_from_references(
+         %{from: from_trait_name} = trait,
+         entity,
+         valid_trait_names,
+         trait_name_to_entity
+       ) do
+    validate_single_from_reference(
+      trait,
+      entity,
+      from_trait_name,
+      valid_trait_names,
+      trait_name_to_entity
+    )
+  end
+
+  defp validate_single_from_reference(
+         trait,
+         entity,
+         from_trait_name,
+         valid_trait_names,
+         trait_name_to_entity
+       ) do
+    cond do
+      MapSet.member?(valid_trait_names, from_trait_name) ->
+        :ok
+
+      Map.has_key?(trait_name_to_entity, from_trait_name) ->
+        other_entity = Map.get(trait_name_to_entity, from_trait_name)
+
+        raise Spark.Error.DslError,
+          path: [:root, :trait, trait.name, entity],
+          message:
+            "trait #{inspect(from_trait_name)} in `from` option belongs to entity #{inspect(other_entity)}, not #{inspect(entity)}",
+          location: Spark.Dsl.Entity.anno(trait)
+
+      true ->
+        raise Spark.Error.DslError,
+          path: [:root, :trait, trait.name, entity],
+          message: "unknown trait #{inspect(from_trait_name)} in `from` option",
+          location: Spark.Dsl.Entity.anno(trait)
+    end
   end
 end
