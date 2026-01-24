@@ -289,6 +289,7 @@ defmodule SeedFactory do
         context
         |> Requirements.new(entities_with_trait_names)
         |> Requirements.for_entities_with_trait_names(entities_with_trait_names, nil)
+        |> Requirements.unwrap!()
         |> Requirements.resolve_conflicts()
         |> Requirements.apply_to_context(&exec/3)
       end)
@@ -331,6 +332,7 @@ defmodule SeedFactory do
         context
         |> Requirements.new(entities_with_trait_names)
         |> Requirements.for_entities_with_trait_names(entities_with_trait_names, nil)
+        |> Requirements.unwrap!()
         |> Requirements.resolve_conflicts()
         |> Requirements.delete_explicitly_requested_commands()
         |> Requirements.apply_to_context(&exec/3)
@@ -448,6 +450,7 @@ defmodule SeedFactory do
       context
       |> Requirements.new([])
       |> Requirements.for_command(command, initial_input, nil)
+      |> Requirements.unwrap!()
       |> Requirements.resolve_conflicts()
       |> Requirements.apply_to_context(&exec/3)
     end)

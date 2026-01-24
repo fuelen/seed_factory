@@ -48,6 +48,7 @@ defmodule SeedFactory.SchemaTest do
     ],
     candidate_welcome_notification: [:send_welcome_to_candidate, :send_welcome_to_candidate_v2],
     ceremony: [:create_ceremony],
+    document: [:create_document, :create_document_for_verified_profile],
     draft_project: [
       :create_draft_project,
       :import_draft_project_from_third_party_service,
@@ -1260,6 +1261,48 @@ defmodule SeedFactory.SchemaTest do
         updating_instructions: [],
         deleting_instructions: [],
         required_entities: %{nomination: MapSet.new([])}
+      },
+      create_document: %SeedFactory.Command{
+        name: :create_document,
+        params: %{
+          profile: %SeedFactory.Parameter{
+            name: :profile,
+            type: :entity,
+            value: nil,
+            map: nil,
+            generate: nil,
+            params: %{},
+            entity: :profile,
+            with_traits: nil
+          }
+        },
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :document, from: :document}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{profile: MapSet.new([])}
+      },
+      create_document_for_verified_profile: %SeedFactory.Command{
+        name: :create_document_for_verified_profile,
+        params: %{
+          profile: %SeedFactory.Parameter{
+            name: :profile,
+            type: :entity,
+            value: nil,
+            map: nil,
+            generate: nil,
+            params: %{},
+            entity: :profile,
+            with_traits: [:contacts_confirmed]
+          }
+        },
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :document, from: :document}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{profile: MapSet.new([:contacts_confirmed])}
       }
     }
 

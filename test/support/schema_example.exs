@@ -14,6 +14,7 @@ defmodule SchemaExample do
   defmodule Nomination, do: defstruct([:id])
   defmodule Prize, do: defstruct([:id])
   defmodule Ceremony, do: defstruct([:id])
+  defmodule Document, do: defstruct([:id, :profile_id, :verified_profile?])
 
   defmodule Project do
     defstruct [
@@ -839,5 +840,33 @@ defmodule SchemaExample do
 
   trait :earned, :prize do
     exec :earn_prize
+  end
+
+  # Commands for testing trait mismatch in conflict groups.
+  # create_document and create_document_for_verified_profile both produce :document,
+  # creating a conflict group. When profile already exists without :contacts_confirmed trait,
+  # the system should remove create_document_for_verified_profile from the conflict group
+  # instead of raising an exception.
+
+  command :create_document do
+    param :profile, entity: :profile
+
+    resolve(fn args ->
+      {:ok,
+       %{document: %Document{id: gen_id(), profile_id: args.profile.id, verified_profile?: false}}}
+    end)
+
+    produce :document
+  end
+
+  command :create_document_for_verified_profile do
+    param :profile, entity: :profile, with_traits: [:contacts_confirmed]
+
+    resolve(fn args ->
+      {:ok,
+       %{document: %Document{id: gen_id(), profile_id: args.profile.id, verified_profile?: true}}}
+    end)
+
+    produce :document
   end
 end

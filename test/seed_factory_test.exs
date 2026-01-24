@@ -1191,6 +1191,29 @@ defmodule SeedFactoryTest do
 
       assert context.prize
     end
+
+    # Regression test for trait mismatch in conflict groups.
+    # When a command in a conflict group requires a trait that cannot be satisfied
+    # (because the entity was already created without that trait), the system should
+    # remove that command from the conflict group instead of raising an exception.
+    #
+    # Scenario:
+    # 1. create_pending_user produces :user and :profile (without :contacts_confirmed trait)
+    # 2. create_document_for_verified_profile requires :profile with :contacts_confirmed trait
+    # 3. create_document doesn't have this requirement
+    # 4. When profile already exists without :contacts_confirmed and we need :document,
+    #    the system should automatically choose create_document instead of failing
+    test "removes command from conflict group when trait cannot be satisfied" do
+      context =
+        %{}
+        |> SeedFactory.init(SchemaExample)
+        |> SeedFactory.produce(:profile)
+        |> SeedFactory.produce(:document)
+
+      assert context.document
+      assert context.profile.contacts_confirmed? == false
+      assert context.document.verified_profile? == false
+    end
   end
 
   defp assert_trait(context, binding_name, expected_traits) when is_list(expected_traits) do

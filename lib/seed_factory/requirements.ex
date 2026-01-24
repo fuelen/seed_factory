@@ -38,6 +38,9 @@ defmodule SeedFactory.Requirements do
     %{requirements | graph: CommandGraph.delete_explicitly_requested_nodes(requirements.graph)}
   end
 
+  def unwrap!({:ok, requirements}), do: requirements
+  def unwrap!({:error, exception}), do: raise(exception)
+
   # Delegation to Collector
 
   defdelegate for_command(requirements, command, initial_input, required_by),

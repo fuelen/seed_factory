@@ -203,12 +203,31 @@ defmodule SeedFactory.Requirements.Collector do
 
   def for_command(requirements, command, initial_input, required_by) do
     entities_with_trait_names = extract_parameter_requirements(command, initial_input)
-    for_entities_with_trait_names(requirements, entities_with_trait_names, required_by)
+
+    case for_entities_with_trait_names(requirements, entities_with_trait_names, required_by) do
+      {:ok, _} = ok ->
+        ok
+
+      {:error, _} = error ->
+        case requirements.graph.nodes[required_by] do
+          %{conflict_groups: [_ | _]} ->
+            # Command is in a conflict group and its dependencies cannot be satisfied.
+            # Remove it from the graph instead of failing - another command in the
+            # conflict group may still work.
+            graph =
+              SeedFactory.Requirements.CommandGraph.remove_node(requirements.graph, required_by)
+
+            {:ok, %{requirements | graph: graph}}
+
+          _ ->
+            error
+        end
+    end
   end
 
   def for_entities_with_trait_names(requirements, entities_with_trait_names, _required_by)
       when map_size(entities_with_trait_names) == 0 do
-    requirements
+    {:ok, requirements}
   end
 
   def for_entities_with_trait_names(
@@ -216,114 +235,143 @@ defmodule SeedFactory.Requirements.Collector do
         entities_with_trait_names,
         required_by
       ) do
-    {requirements, command_names} =
-      Enum.reduce(
+    initial_acc = {:ok, {initial_requirements, MapSet.new()}}
+
+    result =
+      Enum.reduce_while(
         entities_with_trait_names,
-        {initial_requirements, MapSet.new()},
-        fn {entity_name, trait_names}, {requirements, command_names} = acc ->
+        initial_acc,
+        fn {entity_name, trait_names}, {:ok, {requirements, command_names} = acc} ->
           # duplicated values are produced by extract_parameter_requirements function after recursive calls to
           # `collect_requirements_for_command` function
           trait_names = Enum.uniq(trait_names)
 
           binding_name = SeedFactory.Context.binding_name(context, entity_name)
 
-          if Map.has_key?(context, binding_name) do
-            if trait_names == [] do
-              acc
-            else
-              current_trait_names = SeedFactory.Context.current_trait_names(context, binding_name)
-
-              absent_trait_names = trait_names -- current_trait_names
-
-              if absent_trait_names == [] do
-                acc
+          result =
+            if Map.has_key?(context, binding_name) do
+              if trait_names == [] do
+                {:ok, acc}
               else
-                %{by_name: traits_by_name} =
-                  SeedFactory.Context.fetch_traits!(context, entity_name)
+                current_trait_names =
+                  SeedFactory.Context.current_trait_names(context, binding_name)
 
-                trail =
-                  SeedFactory.Context.fetch_trail(context, binding_name) ||
-                    raise """
-                    Can't find trail for #{inspect(binding_name)} entity.
-                    Please don't put entities that can have traits manually in the context.
-                    """
+                absent_trait_names = trait_names -- current_trait_names
 
+                if absent_trait_names == [] do
+                  {:ok, acc}
+                else
+                  %{by_name: traits_by_name} =
+                    SeedFactory.Context.fetch_traits!(context, entity_name)
+
+                  trail =
+                    SeedFactory.Context.fetch_trail(context, binding_name) ||
+                      raise """
+                      Can't find trail for #{inspect(binding_name)} entity.
+                      Please don't put entities that can have traits manually in the context.
+                      """
+
+                  SeedFactory.Requirements.Restrictions.ensure_not_restricted!(
+                    requirements.restrictions,
+                    entity_name,
+                    binding_name,
+                    absent_trait_names,
+                    required_by
+                  )
+
+                  collect_requirements_for_traits(
+                    acc,
+                    absent_trait_names,
+                    traits_by_name,
+                    entity_name,
+                    SeedFactory.Trail.to_map(trail),
+                    required_by
+                  )
+                end
+              end
+            else
+              if trait_names == [] do
+                {names, traits} =
+                  SeedFactory.Requirements.Restrictions.command_names_and_traits_for_entity(
+                    requirements.restrictions,
+                    context,
+                    entity_name
+                  )
+
+                {graph, added_command_names} =
+                  SeedFactory.Requirements.CommandGraph.register_commands(
+                    requirements.graph,
+                    names,
+                    required_by,
+                    traits
+                  )
+
+                requirements = %{requirements | graph: graph}
+                {:ok, {requirements, MapSet.union(command_names, added_command_names)}}
+              else
                 SeedFactory.Requirements.Restrictions.ensure_not_restricted!(
                   requirements.restrictions,
                   entity_name,
                   binding_name,
-                  absent_trait_names,
+                  trait_names,
                   required_by
                 )
 
+                %{by_name: traits_by_name} =
+                  SeedFactory.Context.fetch_traits!(context, entity_name)
+
+                command_names_that_can_produce_entity =
+                  SeedFactory.Context.fetch_command_names_by_entity!(context, entity_name)
+
+                {graph, added_command_names} =
+                  SeedFactory.Requirements.CommandGraph.register_commands(
+                    requirements.graph,
+                    command_names_that_can_produce_entity,
+                    required_by,
+                    []
+                  )
+
+                requirements = %{requirements | graph: graph}
+
                 collect_requirements_for_traits(
-                  acc,
-                  absent_trait_names,
+                  {requirements, MapSet.union(command_names, added_command_names)},
+                  trait_names,
                   traits_by_name,
                   entity_name,
-                  SeedFactory.Trail.to_map(trail),
+                  %{},
                   required_by
                 )
               end
             end
-          else
-            if trait_names == [] do
-              {names, traits} =
-                SeedFactory.Requirements.Restrictions.command_names_and_traits_for_entity(
-                  requirements.restrictions,
-                  context,
-                  entity_name
-                )
 
-              {graph, added_command_names} =
-                SeedFactory.Requirements.CommandGraph.register_commands(
-                  requirements.graph,
-                  names,
-                  required_by,
-                  traits
-                )
-
-              requirements = %{requirements | graph: graph}
-              {requirements, MapSet.union(command_names, added_command_names)}
-            else
-              SeedFactory.Requirements.Restrictions.ensure_not_restricted!(
-                requirements.restrictions,
-                entity_name,
-                binding_name,
-                trait_names,
-                required_by
-              )
-
-              %{by_name: traits_by_name} =
-                SeedFactory.Context.fetch_traits!(context, entity_name)
-
-              command_names_that_can_produce_entity =
-                SeedFactory.Context.fetch_command_names_by_entity!(context, entity_name)
-
-              {graph, added_command_names} =
-                SeedFactory.Requirements.CommandGraph.register_commands(
-                  requirements.graph,
-                  command_names_that_can_produce_entity,
-                  required_by,
-                  []
-                )
-
-              requirements = %{requirements | graph: graph}
-
-              collect_requirements_for_traits(
-                {requirements, MapSet.union(command_names, added_command_names)},
-                trait_names,
-                traits_by_name,
-                entity_name,
-                %{},
-                required_by
-              )
-            end
+          case result do
+            {:ok, acc} -> {:cont, {:ok, acc}}
+            {:error, _} = error -> {:halt, error}
           end
         end
       )
 
-    Enum.reduce(command_names, requirements, fn command_name, requirements ->
+    case result do
+      {:ok, {requirements, command_names}} ->
+        collect_requirements_for_commands(
+          command_names,
+          requirements,
+          initial_requirements,
+          context
+        )
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp collect_requirements_for_commands(
+         command_names,
+         requirements,
+         initial_requirements,
+         context
+       ) do
+    Enum.reduce_while(command_names, {:ok, requirements}, fn command_name, {:ok, requirements} ->
       command = SeedFactory.Context.fetch_command!(context, command_name)
 
       added_to_requirements_in_previous_iterations? =
@@ -335,9 +383,12 @@ defmodule SeedFactory.Requirements.Collector do
       if added_to_requirements_in_previous_iterations? or
            removed_from_requirements_in_current_iteration? or
            anything_was_produced_by_command?(context, command) do
-        requirements
+        {:cont, {:ok, requirements}}
       else
-        for_command(requirements, command, %{}, command.name)
+        case for_command(requirements, command, %{}, command.name) do
+          {:ok, requirements} -> {:cont, {:ok, requirements}}
+          {:error, _} = error -> {:halt, error}
+        end
       end
     end)
   end
@@ -350,19 +401,23 @@ defmodule SeedFactory.Requirements.Collector do
         trail_map,
         required_by
       ) do
-    Enum.reduce(trait_names, acc, fn trait_name, acc ->
+    Enum.reduce_while(trait_names, {:ok, acc}, fn trait_name, {:ok, acc} ->
       traits = Map.fetch!(traits_by_name, trait_name)
 
       case resolve_traits(acc, traits, traits_by_name, trail_map, required_by) do
         {:ok, acc} ->
-          acc
+          {:cont, {:ok, acc}}
 
         {:error, reason} ->
-          raise SeedFactory.TraitResolutionError,
-            entity: entity_name,
-            trait: trait_name,
-            required_by: required_by,
-            reason: reason
+          exception =
+            SeedFactory.TraitResolutionError.exception(
+              entity: entity_name,
+              trait: trait_name,
+              required_by: required_by,
+              reason: reason
+            )
+
+          {:halt, {:error, exception}}
       end
     end)
   end
