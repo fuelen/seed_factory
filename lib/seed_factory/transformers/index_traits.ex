@@ -25,6 +25,7 @@ defmodule SeedFactory.Transformers.IndexTraits do
         ensure_unique_names(traits, entity)
         ensure_traits_have_valid_commands(entity, traits, dsl_state)
         ensure_valid_from_references(entity, traits, traits_by_entity)
+        ensure_no_circular_dependencies(entity, traits)
         traits = populate_to_field(traits)
 
         {entity,
@@ -136,6 +137,64 @@ defmodule SeedFactory.Transformers.IndexTraits do
           message: "duplicated trait",
           location: Spark.Dsl.Entity.anno(second)
     end)
+  end
+
+  defp ensure_no_circular_dependencies(entity, traits) do
+    traits_by_name = Map.new(traits, &{&1.name, &1})
+
+    Enum.reduce(traits, MapSet.new(), fn trait, visited ->
+      detect_cycle(trait.name, traits_by_name, MapSet.new(), [], visited, entity)
+    end)
+  end
+
+  defp detect_cycle(trait_name, traits_by_name, in_path, path_list, visited, entity) do
+    cond do
+      MapSet.member?(visited, trait_name) ->
+        visited
+
+      MapSet.member?(in_path, trait_name) ->
+        cycle = build_cycle_path(trait_name, path_list)
+        trait = traits_by_name[hd(path_list)]
+
+        raise Spark.Error.DslError,
+          path: [:root, :trait, hd(path_list), entity],
+          message: "circular trait dependency detected: #{cycle}",
+          location: Spark.Dsl.Entity.anno(trait)
+
+      true ->
+        visited = traverse_from(trait_name, traits_by_name, in_path, path_list, visited, entity)
+        MapSet.put(visited, trait_name)
+    end
+  end
+
+  defp traverse_from(trait_name, traits_by_name, in_path, path_list, visited, entity) do
+    case traits_by_name[trait_name] do
+      nil ->
+        visited
+
+      %{from: nil} ->
+        visited
+
+      %{from: from} when is_atom(from) ->
+        new_in_path = MapSet.put(in_path, trait_name)
+        detect_cycle(from, traits_by_name, new_in_path, [trait_name | path_list], visited, entity)
+
+      %{from: from_list} when is_list(from_list) ->
+        new_in_path = MapSet.put(in_path, trait_name)
+        new_path_list = [trait_name | path_list]
+
+        Enum.reduce(from_list, visited, fn from, visited ->
+          detect_cycle(from, traits_by_name, new_in_path, new_path_list, visited, entity)
+        end)
+    end
+  end
+
+  defp build_cycle_path(trait_name, path_list) do
+    path_list
+    |> Enum.reverse()
+    |> Enum.drop_while(&(&1 != trait_name))
+    |> Kernel.++([trait_name])
+    |> Enum.join(" -> ")
   end
 
   defp ensure_valid_from_references(entity, traits, traits_by_entity) do

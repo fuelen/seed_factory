@@ -1908,5 +1908,58 @@ defmodule SeedFactory.SchemaTest do
         end
       )
     end
+
+    test "raises when trait from creates a cycle" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> trait_b -> user defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          circular trait dependency detected: trait_a -> trait_c -> trait_b -> trait_a
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_user do
+              resolve(fn _ -> {:ok, %{user: %{id: 1}}} end)
+              produce :user
+            end
+
+            command :update_user_a do
+              param :user, entity: :user
+              resolve(fn _ -> {:ok, %{user: %{id: 1}}} end)
+              update :user
+            end
+
+            command :update_user_b do
+              param :user, entity: :user
+              resolve(fn _ -> {:ok, %{user: %{id: 1}}} end)
+              update :user
+            end
+
+            command :update_user_c do
+              param :user, entity: :user
+              resolve(fn _ -> {:ok, %{user: %{id: 1}}} end)
+              update :user
+            end
+
+            trait :trait_a, :user do
+              from :trait_c
+              exec :update_user_a
+            end
+
+            trait :trait_b, :user do
+              from :trait_a
+              exec :update_user_b
+            end
+
+            trait :trait_c, :user do
+              from :trait_b
+              exec :update_user_c
+            end
+          end
+        end
+      )
+    end
   end
 end
