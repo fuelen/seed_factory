@@ -38,10 +38,13 @@ defmodule SeedFactory.Transformers.VerifyDependencies do
           :ok
 
         {:error, :unknown_entity, param_name, entity_name} ->
+          suggestion =
+            SeedFactory.DidYouMean.suggest(entity_name, Map.keys(command_names_by_entity))
+
           raise Spark.Error.DslError,
             path: [:root, :command, command.name],
             message:
-              "param #{inspect(param_name)} references unknown entity #{inspect(entity_name)}",
+              "param #{inspect(param_name)} references unknown entity #{inspect(entity_name)}#{SeedFactory.DidYouMean.format_suggestion(suggestion)}",
             location: Spark.Dsl.Entity.anno(command)
       end
     end)

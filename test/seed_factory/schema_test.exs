@@ -1586,7 +1586,7 @@ defmodule SeedFactory.SchemaTest do
         """
         [SeedFactory.SchemaTest.MySchema]
         root -> trait -> pending -> org defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
-          unknown command :create_new_org
+          unknown command :create_new_org, did you mean :create_org?
         """,
         fn ->
           defmodule MySchema do
@@ -1610,15 +1610,20 @@ defmodule SeedFactory.SchemaTest do
       assert_dsl_error(
         """
         [SeedFactory.SchemaTest.MySchema]
-        root -> trait -> pending -> unknown defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
-          unknown entity
+        root -> trait -> pending -> users defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          unknown entity, did you mean :user?
         """,
         fn ->
           defmodule MySchema do
             use SeedFactory.Schema
 
-            trait :pending, :unknown do
-              exec(:create_org)
+            command :create_user do
+              resolve(fn _ -> {:ok, %{user: %{id: 1}}} end)
+              produce :user
+            end
+
+            trait :pending, :users do
+              exec(:create_user)
             end
           end
         end
@@ -1629,17 +1634,22 @@ defmodule SeedFactory.SchemaTest do
       assert_dsl_error(
         """
         [SeedFactory.SchemaTest.MySchema]
-        root -> command -> create_user defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
-          param :thing references unknown entity :nonexistent_entity
+        root -> command -> create_post defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          param :author references unknown entity :users, did you mean :user?
         """,
         fn ->
           defmodule MySchema do
             use SeedFactory.Schema
 
             command :create_user do
-              param :thing, entity: :nonexistent_entity
               resolve(fn _ -> {:ok, %{user: %{id: 1}}} end)
               produce :user
+            end
+
+            command :create_post do
+              param :author, entity: :users
+              resolve(fn _ -> {:ok, %{post: %{id: 1}}} end)
+              produce :post
             end
           end
         end
@@ -1856,7 +1866,7 @@ defmodule SeedFactory.SchemaTest do
         """
         [SeedFactory.SchemaTest.MySchema]
         root -> trait -> advanced -> thing defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
-          unknown trait :nonexistent_trait in `from` option
+          unknown trait :initials in `from` option, did you mean :initial?
         """,
         fn ->
           defmodule MySchema do
@@ -1878,7 +1888,7 @@ defmodule SeedFactory.SchemaTest do
             end
 
             trait :advanced, :thing do
-              from :nonexistent_trait
+              from :initials
               exec :upgrade_thing
             end
           end

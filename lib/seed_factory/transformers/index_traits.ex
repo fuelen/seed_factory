@@ -53,9 +53,12 @@ defmodule SeedFactory.Transformers.IndexTraits do
     if Map.has_key?(command_name_by_entity, entity) do
       :ok
     else
+      suggestion =
+        SeedFactory.DidYouMean.suggest(entity, Map.keys(command_name_by_entity))
+
       raise Spark.Error.DslError,
         path: [:root, :trait, trait.name, entity],
-        message: "unknown entity",
+        message: "unknown entity#{SeedFactory.DidYouMean.format_suggestion(suggestion)}",
         location: Spark.Dsl.Entity.anno(trait)
     end
   end
@@ -70,9 +73,16 @@ defmodule SeedFactory.Transformers.IndexTraits do
             command
 
           :error ->
+            suggestion =
+              SeedFactory.DidYouMean.suggest(
+                trait.exec_step.command_name,
+                Map.keys(command_by_name)
+              )
+
             raise Spark.Error.DslError,
               path: [:root, :trait, trait.name, entity],
-              message: "unknown command #{inspect(trait.exec_step.command_name)}",
+              message:
+                "unknown command #{inspect(trait.exec_step.command_name)}#{SeedFactory.DidYouMean.format_suggestion(suggestion)}",
               location: Spark.Dsl.Entity.anno(trait)
         end
 
@@ -269,9 +279,12 @@ defmodule SeedFactory.Transformers.IndexTraits do
           location: Spark.Dsl.Entity.anno(trait)
 
       true ->
+        suggestion = SeedFactory.DidYouMean.suggest(from_trait_name, valid_trait_names)
+
         raise Spark.Error.DslError,
           path: [:root, :trait, trait.name, entity],
-          message: "unknown trait #{inspect(from_trait_name)} in `from` option",
+          message:
+            "unknown trait #{inspect(from_trait_name)} in `from` option#{SeedFactory.DidYouMean.format_suggestion(suggestion)}",
           location: Spark.Dsl.Entity.anno(trait)
     end
   end
