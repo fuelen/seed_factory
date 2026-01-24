@@ -1037,11 +1037,8 @@ defmodule SeedFactoryTest do
   end
 
   describe "requirements rejection" do
-    test "skips traits backed by rejected commands while collecting requirements" do
-      context =
-        %{}
-        |> SeedFactory.init(SchemaExample)
-        |> SeedFactory.produce(user: [:pending_skipped, :active])
+    test "skips traits backed by rejected commands while collecting requirements", context do
+      context = produce(context, user: [:pending_skipped, :active])
 
       assert %SchemaExample.User{status: :active} = context.user
 
@@ -1061,7 +1058,7 @@ defmodule SeedFactoryTest do
       refute :create_pending_user in trail_commands
     end
 
-    test "raises when conflicting traits rely on rejected commands" do
+    test "raises when conflicting traits rely on rejected commands", context do
       expected =
         """
         cannot satisfy trait :production_ready for entity :integration_pipeline (requested trait)
@@ -1070,13 +1067,11 @@ defmodule SeedFactoryTest do
         |> String.trim_trailing()
 
       assert_raise(SeedFactory.TraitResolutionError, expected, fn ->
-        %{}
-        |> SeedFactory.init(SchemaExample)
-        |> SeedFactory.produce(integration_pipeline: [:sandbox_ready, :production_ready])
+        produce(context, integration_pipeline: [:sandbox_ready, :production_ready])
       end)
     end
 
-    test "raises when transition trait prerequisites were rejected" do
+    test "raises when transition trait prerequisites were rejected", context do
       expected =
         """
         cannot satisfy trait :deployment_promoted for entity :integration_pipeline (requested trait)
@@ -1087,13 +1082,11 @@ defmodule SeedFactoryTest do
         |> String.trim_trailing()
 
       assert_raise(SeedFactory.TraitResolutionError, expected, fn ->
-        %{}
-        |> SeedFactory.init(SchemaExample)
-        |> SeedFactory.produce(integration_pipeline: [:production_ready, :deployment_promoted])
+        produce(context, integration_pipeline: [:production_ready, :deployment_promoted])
       end)
     end
 
-    test "raises when command requires an unsatisfiable trait" do
+    test "raises when command requires an unsatisfiable trait", context do
       expected =
         """
         cannot satisfy trait :deployment_promoted for entity :integration_pipeline (requested trait)
@@ -1104,18 +1097,14 @@ defmodule SeedFactoryTest do
         |> String.trim_trailing()
 
       assert_raise(SeedFactory.TraitResolutionError, expected, fn ->
-        %{}
-        |> SeedFactory.init(SchemaExample)
-        |> SeedFactory.exec(:finalize_pipeline_launch)
+        exec(context, :finalize_pipeline_launch)
       end)
     end
 
-    test "uses plural phrasing when multiple implementations were rejected" do
+    test "uses plural phrasing when multiple implementations were rejected", context do
       error =
         assert_raise SeedFactory.TraitResolutionError, fn ->
-          %{}
-          |> SeedFactory.init(SchemaExample)
-          |> SeedFactory.produce(integration_pipeline: [:regional_ready, :compliance_signed_off])
+          produce(context, integration_pipeline: [:regional_ready, :compliance_signed_off])
         end
 
       assert String.contains?(
@@ -1129,12 +1118,10 @@ defmodule SeedFactoryTest do
              )
     end
 
-    test "labels traits required by commands in the error context" do
+    test "labels traits required by commands in the error context", context do
       error =
         assert_raise SeedFactory.TraitResolutionError, fn ->
-          %{}
-          |> SeedFactory.init(SchemaExample)
-          |> SeedFactory.produce(launch_announcement: [:launch_announcement_scheduled])
+          produce(context, launch_announcement: [:launch_announcement_scheduled])
         end
 
       expected =
@@ -1149,12 +1136,11 @@ defmodule SeedFactoryTest do
       assert error.message == expected
     end
 
-    test "raises with combined, deduplicated reasons when multiple trait branches conflict" do
+    test "raises with combined, deduplicated reasons when multiple trait branches conflict",
+         context do
       error =
         assert_raise SeedFactory.TraitResolutionError, fn ->
-          %{}
-          |> SeedFactory.init(SchemaExample)
-          |> SeedFactory.produce(integration_pipeline: [:regional_ready, :compliance_signed_off])
+          produce(context, integration_pipeline: [:regional_ready, :compliance_signed_off])
         end
 
       expected =
@@ -1183,12 +1169,8 @@ defmodule SeedFactoryTest do
     # 6. diff = [direct_award], but it's in prize AND award groups
     #
     # Bug: direct_award was removed despite being in 2 conflict groups
-    test "is_subset conflict resolution preserves commands needed by other branches" do
-      context =
-        %{}
-        |> SeedFactory.init(SchemaExample)
-        |> SeedFactory.produce([:prize])
-
+    test "is_subset conflict resolution preserves commands needed by other branches", context do
+      context = produce(context, [:prize])
       assert context.prize
     end
 
@@ -1199,29 +1181,20 @@ defmodule SeedFactoryTest do
     #
     # Bug: Commands were executing in reverse order, so the final state
     # would be wrong (e.g., status: :in_progress instead of :in_review)
-    test "trait transitions execute in correct order" do
+    test "trait transitions execute in correct order", context do
       # Path: todo -> in_progress -> in_review (3 steps)
-      context =
-        %{}
-        |> SeedFactory.init(SchemaExample)
-        |> SeedFactory.produce(task: [:in_review])
-
-      assert context.task.status == :in_review
+      context1 = produce(context, task: [:in_review])
+      assert context1.task.status == :in_review
 
       # Path: todo -> in_progress -> completed (3 steps, alternative path)
-      context2 =
-        %{}
-        |> SeedFactory.init(SchemaExample)
-        |> SeedFactory.produce(task: [:completed])
-
+      context2 = produce(context, task: [:completed])
       assert context2.task.status == :completed
 
       # Path: todo -> in_progress -> in_review -> completed (4 steps)
       context3 =
-        %{}
-        |> SeedFactory.init(SchemaExample)
-        |> SeedFactory.produce(task: [:in_review])
-        |> SeedFactory.produce(task: [:completed])
+        context
+        |> produce(task: [:in_review])
+        |> produce(task: [:completed])
 
       assert context3.task.status == :completed
     end
@@ -1237,12 +1210,11 @@ defmodule SeedFactoryTest do
     # 3. create_document doesn't have this requirement
     # 4. When profile already exists without :contacts_confirmed and we need :document,
     #    the system should automatically choose create_document instead of failing
-    test "removes command from conflict group when trait cannot be satisfied" do
+    test "removes command from conflict group when trait cannot be satisfied", context do
       context =
-        %{}
-        |> SeedFactory.init(SchemaExample)
-        |> SeedFactory.produce(:profile)
-        |> SeedFactory.produce(:document)
+        context
+        |> produce(:profile)
+        |> produce(:document)
 
       assert context.document
       assert context.profile.contacts_confirmed? == false
@@ -1260,20 +1232,31 @@ defmodule SeedFactoryTest do
     # When :widget exists (via create_widget), producing :widget_bundle
     # should use create_widget_bundle_only, not create_widget_and_bundle
     # (which would fail on existing :widget).
-    test "excludes commands from conflict group when they would produce existing entities" do
-      context =
-        %{}
-        |> SeedFactory.init(SchemaExample)
-        |> SeedFactory.produce(:widget)
+    test "excludes commands from conflict group when they would produce existing entities",
+         context do
+      context = produce(context, :widget)
 
       # Verify widget exists before producing widget_bundle
       assert context.widget == "widget"
 
-      context = SeedFactory.produce(context, :widget_bundle)
+      context = produce(context, :widget_bundle)
 
       # Must use create_widget_bundle_only, not create_widget_and_bundle
       # (which would fail trying to produce already existing :widget)
       assert context.widget_bundle == "standalone bundle"
+    end
+  end
+
+  describe "trait resolution order" do
+    test "produce(user: [:active, :admin]) gives same result as produce(user: [:admin, :active])",
+         context do
+      context1 = produce(context, user: [:active, :admin])
+      context2 = produce(context, user: [:admin, :active])
+
+      assert context1.__seed_factory_meta__.current_traits[:user] ==
+               context2.__seed_factory_meta__.current_traits[:user]
+
+      assert context1.user.role == context2.user.role
     end
   end
 
