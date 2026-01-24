@@ -869,4 +869,34 @@ defmodule SchemaExample do
 
     produce :document
   end
+
+  # Test entities for "conflict with existing entities" scenario.
+  # widget_bundle can be produced by:
+  #   - create_widget_and_bundle (produces both widget and widget_bundle)
+  #   - create_widget_bundle_only (produces only widget_bundle)
+  # When widget already exists, create_widget_bundle_only should be used.
+  command :create_widget do
+    resolve(fn _ ->
+      {:ok, %{widget: "widget"}}
+    end)
+
+    produce :widget
+  end
+
+  command :create_widget_and_bundle do
+    resolve(fn _ ->
+      {:ok, %{widget: "widget from bundle", widget_bundle: "bundle with widget"}}
+    end)
+
+    produce :widget
+    produce :widget_bundle
+  end
+
+  command :create_widget_bundle_only do
+    resolve(fn _ ->
+      {:ok, %{widget_bundle: "standalone bundle"}}
+    end)
+
+    produce :widget_bundle
+  end
 end

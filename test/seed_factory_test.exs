@@ -1248,6 +1248,33 @@ defmodule SeedFactoryTest do
       assert context.profile.contacts_confirmed? == false
       assert context.document.verified_profile? == false
     end
+
+    # Regression test: conflict group resolution must consider existing entities.
+    # When an entity already exists, commands that would produce it again must be
+    # excluded from conflict resolution.
+    #
+    # Scenario with overlapping commands:
+    # - create_widget_and_bundle produces both :widget and :widget_bundle
+    # - create_widget_bundle_only produces only :widget_bundle
+    #
+    # When :widget exists (via create_widget), producing :widget_bundle
+    # should use create_widget_bundle_only, not create_widget_and_bundle
+    # (which would fail on existing :widget).
+    test "excludes commands from conflict group when they would produce existing entities" do
+      context =
+        %{}
+        |> SeedFactory.init(SchemaExample)
+        |> SeedFactory.produce(:widget)
+
+      # Verify widget exists before producing widget_bundle
+      assert context.widget == "widget"
+
+      context = SeedFactory.produce(context, :widget_bundle)
+
+      # Must use create_widget_bundle_only, not create_widget_and_bundle
+      # (which would fail trying to produce already existing :widget)
+      assert context.widget_bundle == "standalone bundle"
+    end
   end
 
   defp assert_trait(context, binding_name, expected_traits) when is_list(expected_traits) do

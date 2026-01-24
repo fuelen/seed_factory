@@ -9,8 +9,13 @@ defmodule SeedFactory.Context do
     context.__seed_factory_meta__.entities_rebinding[entity_name] || entity_name
   end
 
-  defp has_entity?(context, entity_name) do
+  defp entity_defined_in_schema?(context, entity_name) do
     Map.has_key?(context.__seed_factory_meta__.entities, entity_name)
+  end
+
+  def entity_exists?(context, entity_name) do
+    binding_name = binding_name(context, entity_name)
+    Map.has_key?(context, binding_name)
   end
 
   defp get_entities_rebinding(context) do
@@ -143,7 +148,7 @@ defmodule SeedFactory.Context do
 
   defp ensure_entities_exist_in_rebinding!(context, rebinding) do
     for {entity_name, _rebind_as} <- rebinding do
-      unless has_entity?(context, entity_name) do
+      if not entity_defined_in_schema?(context, entity_name) do
         raise SeedFactory.UnknownEntityError,
           entity: entity_name,
           available: Map.keys(context.__seed_factory_meta__.entities)

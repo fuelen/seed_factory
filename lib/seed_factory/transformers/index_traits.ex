@@ -113,7 +113,7 @@ defmodule SeedFactory.Transformers.IndexTraits do
 
       instructions = command.producing_instructions ++ command.updating_instructions
 
-      unless Enum.any?(instructions, &(&1.entity == entity)) do
+      if not Enum.any?(instructions, &(&1.entity == entity)) do
         raise Spark.Error.DslError,
           path: [:root, :trait, trait.name, entity],
           message:

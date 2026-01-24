@@ -77,7 +77,9 @@ defmodule SeedFactory.SchemaTest do
       :bootstrap_blocked_pipeline
     ],
     launch_announcement: [:publish_launch_announcement],
-    project_quota: [:configure_project_quota]
+    project_quota: [:configure_project_quota],
+    widget: [:create_widget, :create_widget_and_bundle],
+    widget_bundle: [:create_widget_and_bundle, :create_widget_bundle_only]
   }
 
   test "SchemaExampleExtended - persisted data" do
@@ -1303,6 +1305,37 @@ defmodule SeedFactory.SchemaTest do
         updating_instructions: [],
         deleting_instructions: [],
         required_entities: %{profile: MapSet.new([:contacts_confirmed])}
+      },
+      create_widget: %SeedFactory.Command{
+        name: :create_widget,
+        params: %{},
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :widget, from: :widget}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{}
+      },
+      create_widget_and_bundle: %SeedFactory.Command{
+        name: :create_widget_and_bundle,
+        params: %{},
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :widget, from: :widget},
+          %SeedFactory.ProducingInstruction{entity: :widget_bundle, from: :widget_bundle}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{}
+      },
+      create_widget_bundle_only: %SeedFactory.Command{
+        name: :create_widget_bundle_only,
+        params: %{},
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :widget_bundle, from: :widget_bundle}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{}
       }
     }
 

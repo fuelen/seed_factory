@@ -298,6 +298,8 @@ defmodule SeedFactory.Requirements.Collector do
                     entity_name
                   )
 
+                names = reject_commands_that_would_duplicate_entity(names, context, entity_name)
+
                 {graph, added_command_names} =
                   SeedFactory.Requirements.CommandGraph.register_commands(
                     requirements.graph,
@@ -321,7 +323,9 @@ defmodule SeedFactory.Requirements.Collector do
                   SeedFactory.Context.fetch_traits!(context, entity_name)
 
                 command_names_that_can_produce_entity =
-                  SeedFactory.Context.fetch_command_names_by_entity!(context, entity_name)
+                  context
+                  |> SeedFactory.Context.fetch_command_names_by_entity!(entity_name)
+                  |> reject_commands_that_would_duplicate_entity(context, entity_name)
 
                 {graph, added_command_names} =
                   SeedFactory.Requirements.CommandGraph.register_commands(
@@ -457,6 +461,22 @@ defmodule SeedFactory.Requirements.Collector do
         %{produced_by: {produced_by_command_name, _, _}} ->
           command.name == produced_by_command_name
       end
+    end)
+  end
+
+  defp reject_commands_that_would_duplicate_entity(command_names, context, target_entity) do
+    case command_names do
+      [_single] -> command_names
+      multiple -> Enum.reject(multiple, &command_would_duplicate_entity?(&1, context, target_entity))
+    end
+  end
+
+  defp command_would_duplicate_entity?(command_name, context, target_entity) do
+    command = SeedFactory.Context.fetch_command!(context, command_name)
+
+    Enum.any?(command.producing_instructions, fn instruction ->
+      instruction.entity != target_entity and
+        SeedFactory.Context.entity_exists?(context, instruction.entity)
     end)
   end
 end
