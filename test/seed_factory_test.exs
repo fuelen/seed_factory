@@ -1192,6 +1192,40 @@ defmodule SeedFactoryTest do
       assert context.prize
     end
 
+    # Regression test: trait transitions must execute in correct order.
+    # When producing an entity with a trait that requires multiple transitions
+    # (e.g., todo -> in_progress -> in_review), the commands must execute
+    # in the correct order so that each command sees the expected state.
+    #
+    # Bug: Commands were executing in reverse order, so the final state
+    # would be wrong (e.g., status: :in_progress instead of :in_review)
+    test "trait transitions execute in correct order" do
+      # Path: todo -> in_progress -> in_review (3 steps)
+      context =
+        %{}
+        |> SeedFactory.init(SchemaExample)
+        |> SeedFactory.produce(task: [:in_review])
+
+      assert context.task.status == :in_review
+
+      # Path: todo -> in_progress -> completed (3 steps, alternative path)
+      context2 =
+        %{}
+        |> SeedFactory.init(SchemaExample)
+        |> SeedFactory.produce(task: [:completed])
+
+      assert context2.task.status == :completed
+
+      # Path: todo -> in_progress -> in_review -> completed (4 steps)
+      context3 =
+        %{}
+        |> SeedFactory.init(SchemaExample)
+        |> SeedFactory.produce(task: [:in_review])
+        |> SeedFactory.produce(task: [:completed])
+
+      assert context3.task.status == :completed
+    end
+
     # Regression test for trait mismatch in conflict groups.
     # When a command in a conflict group requires a trait that cannot be satisfied
     # (because the entity was already created without that trait), the system should

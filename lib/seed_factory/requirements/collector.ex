@@ -32,8 +32,7 @@ defmodule SeedFactory.Requirements.Collector do
                  filtered_traits,
                  updated_acc,
                  traits_by_name,
-                 trail_map,
-                 required_by
+                 trail_map
                ) do
             {:ok, final_acc, _resolved_traits} ->
               {:ok, final_acc}
@@ -96,8 +95,7 @@ defmodule SeedFactory.Requirements.Collector do
          traits,
          {requirements, _command_names} = acc,
          traits_by_name,
-         trail_map,
-         required_by
+         trail_map
        ) do
     # Only process dependencies for traits whose commands are actually in the graph.
     traits =
@@ -107,7 +105,7 @@ defmodule SeedFactory.Requirements.Collector do
 
     {final_acc, resolved_traits, errors} =
       Enum.reduce(traits, {acc, [], []}, fn trait, {acc, resolved, errors} ->
-        case resolve_single_trait_dependencies(trait, acc, traits_by_name, trail_map, required_by) do
+        case resolve_single_trait_dependencies(trait, acc, traits_by_name, trail_map) do
           {:ok, new_acc} ->
             {new_acc, [trait | resolved], errors}
 
@@ -136,7 +134,9 @@ defmodule SeedFactory.Requirements.Collector do
     end
   end
 
-  defp resolve_single_trait_dependencies(trait, acc, traits_by_name, trail_map, required_by) do
+  defp resolve_single_trait_dependencies(trait, acc, traits_by_name, trail_map) do
+    prerequisite_required_by = trait.exec_step.command_name
+
     case trait.from do
       nil ->
         {:ok, acc}
@@ -148,7 +148,7 @@ defmodule SeedFactory.Requirements.Collector do
           acc,
           traits_by_name,
           trail_map,
-          required_by
+          prerequisite_required_by
         )
 
       from_any_of when is_list(from_any_of) ->
@@ -163,7 +163,7 @@ defmodule SeedFactory.Requirements.Collector do
             acc,
             traits_by_name,
             trail_map,
-            required_by
+            prerequisite_required_by
           )
         end
     end
