@@ -26,15 +26,24 @@ defmodule SeedFactory.Transformers.VerifyDependencies do
 
     command_names_by_entity = Spark.Dsl.Transformer.get_persisted(dsl_state, :entities)
 
-    commands
-    |> Enum.each(fn {command_name, command} ->
-      add_edges(
-        command.params,
-        digraph,
-        vertices[command_name],
-        vertices,
-        command_names_by_entity
-      )
+    Enum.each(commands, fn {command_name, command} ->
+      case add_edges(
+             command.params,
+             digraph,
+             vertices[command_name],
+             vertices,
+             command_names_by_entity
+           ) do
+        :ok ->
+          :ok
+
+        {:error, :unknown_entity, param_name, entity_name} ->
+          raise Spark.Error.DslError,
+            path: [:root, :command, command.name],
+            message:
+              "param #{inspect(param_name)} references unknown entity #{inspect(entity_name)}",
+            location: Spark.Dsl.Entity.anno(command)
+      end
     end)
 
     case :digraph_utils.cyclic_strong_components(digraph) do
@@ -64,19 +73,28 @@ defmodule SeedFactory.Transformers.VerifyDependencies do
     end
   end
 
-  def add_edges(params, digraph, vertice_to, vertices, command_names_by_entity) do
-    Enum.each(params, fn {_key, parameter} ->
+  defp add_edges(params, digraph, vertice_to, vertices, command_names_by_entity) do
+    Enum.reduce_while(params, :ok, fn {_key, parameter}, :ok ->
       case parameter.type do
         :container ->
-          add_edges(parameter.params, digraph, vertice_to, vertices, command_names_by_entity)
+          case add_edges(parameter.params, digraph, vertice_to, vertices, command_names_by_entity) do
+            :ok -> {:cont, :ok}
+            error -> {:halt, error}
+          end
 
         :entity ->
-          required_command_name = hd(Map.fetch!(command_names_by_entity, parameter.entity))
-          vertice_from = Map.fetch!(vertices, required_command_name)
-          :digraph.add_edge(digraph, vertice_to, vertice_from, parameter.entity)
+          case Map.fetch(command_names_by_entity, parameter.entity) do
+            {:ok, [required_command_name | _]} ->
+              vertice_from = Map.fetch!(vertices, required_command_name)
+              :digraph.add_edge(digraph, vertice_to, vertice_from, parameter.entity)
+              {:cont, :ok}
+
+            :error ->
+              {:halt, {:error, :unknown_entity, parameter.name, parameter.entity}}
+          end
 
         _ ->
-          :noop
+          {:cont, :ok}
       end
     end)
   end

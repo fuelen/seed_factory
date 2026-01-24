@@ -1625,6 +1625,27 @@ defmodule SeedFactory.SchemaTest do
       )
     end
 
+    test "param references unknown entity" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> command -> create_user defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          param :thing references unknown entity :nonexistent_entity
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_user do
+              param :thing, entity: :nonexistent_entity
+              resolve(fn _ -> {:ok, %{user: %{id: 1}}} end)
+              produce :user
+            end
+          end
+        end
+      )
+    end
+
     test "defining trait transition with empty from list" do
       assert_dsl_error(
         """

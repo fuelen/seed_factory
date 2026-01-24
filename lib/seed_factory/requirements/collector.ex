@@ -466,8 +466,11 @@ defmodule SeedFactory.Requirements.Collector do
 
   defp reject_commands_that_would_duplicate_entity(command_names, context, target_entity) do
     case command_names do
-      [_single] -> command_names
-      multiple -> Enum.reject(multiple, &command_would_duplicate_entity?(&1, context, target_entity))
+      [_single] ->
+        command_names
+
+      multiple ->
+        Enum.reject(multiple, &command_would_duplicate_entity?(&1, context, target_entity))
     end
   end
 
