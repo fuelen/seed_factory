@@ -3,7 +3,7 @@ defmodule SeedFactory do
   A toolkit for test data generation.
 
   The main idea of `SeedFactory` is to generate data in tests according to your application business logic (read as
-  context functions if you use [Phoenix Contexts](https://hexdocs.pm/phoenix/contexts.html)) whenever it is possible
+  context functions if you use [Phoenix Contexts](https://hexdocs.pm/phoenix/contexts.html)) whenever possible
   and avoid direct inserts to the database (as opposed to `ex_machina`).
   This approach allows you to minimize testing of invalid states as you're not forced to keep complex database structure in your head in order to prepare test data.
   The library is completely agnostic to the database toolkit.

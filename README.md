@@ -124,7 +124,7 @@ context = init(context, MyApp.SeedFactorySchema)
 %{company: _company} = produce(context, :company)
 %{user: _user, company: _company} = produce(context, [:company, :user])
 
-# Rebind entities to another names
+# Rebind entities to other names
 %{profile1: _, user1: _} = produce(context, user: :user1, profile: :profile1)
 
 # Specify traits
@@ -144,7 +144,7 @@ defmodule MyApp.MyTest do
   use SeedFactory.Test, schema: MyApp.SeedFactorySchema
 
   describe "produce/1 macro" do
-    produce :company, user: [:active, :admin, as: :active_admin]
+    produce [:company, user: [:active, :admin, as: :active_admin]]
 
     test "inspect data", %{company: company, active_admin: active_admin} do
       dbg(company)

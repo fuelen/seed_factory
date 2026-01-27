@@ -34,6 +34,9 @@ defmodule SeedFactory.Schema do
   * `:generate` - an anonymous function that generates data.
   * `:entity` - refers to an entity within the context.
   * `:with_traits` - a list of atoms with trait names. Can be applied only if `:entity` option is present.
+    This option is used only for automatic dependency resolution - when the entity doesn't exist in the context,
+    SeedFactory will produce it with the specified traits. If you explicitly pass the entity as a parameter,
+    the traits are not validated.
   * `:map` - an anonymous function that allows mapping an entity to another value. Can be applied only if `:entity` option is present.
 
   ```elixir
@@ -166,6 +169,41 @@ defmodule SeedFactory.Schema do
   ctx |> produce(user: [:active]) |> produce(user: [:suspended])
   ```
 
+  ### Same trait from multiple commands
+
+  The same trait can be defined multiple times with different commands. This is useful when the same state
+  can be reached through different paths in your business logic:
+
+  ```elixir
+  # User can become :active through a state transition...
+  trait :active, :user do
+    from :pending
+    exec :activate_user
+  end
+
+  # ...or directly via a command that creates an already-active user
+  trait :active, :user do
+    exec :create_active_user
+  end
+
+  # Unique marker for the direct path
+  trait :pending_skipped, :user do
+    exec :create_active_user
+  end
+  ```
+
+  When you request an entity with a trait that can be set by multiple commands, SeedFactory picks
+  the first declared command by default. To force a specific path, request a trait that is unique
+  to that command:
+
+  ```elixir
+  # SeedFactory picks the first declared command by default
+  produce(ctx, user: [:active])
+
+  # Force the direct path by requesting :pending_skipped trait
+  produce(ctx, user: [:active, :pending_skipped])
+  ```
+
   ## Exec step
 
   The `exec` directive is required when declaring a trait and is used for specifying what should be executed in order
@@ -177,7 +215,7 @@ defmodule SeedFactory.Schema do
   If the function returns `true`, then the entity will be marked with the trait.
   * `:generate_args` - a function which generates a map with args. Must be used with `:args_match` option. The function generates args which satisfy
   validation in `:args_match` option and is used when the entity is requested with the trait.
-  * `:args_pattern` - a map with args. This option option is less verbose (and limited in functionality) alternative to the combination of `:args_match` and `:generate_args` options.
+  * `:args_pattern` - a map with args. This option is less verbose (and limited in functionality) alternative to the combination of `:args_match` and `:generate_args` options.
   If specified, then entity will be marked with the trait only when command args match the pattern. Also, the pattern will be used as a replacement to `:generate_args` invocation.
 
   ```elixir
@@ -200,7 +238,7 @@ defmodule SeedFactory.Schema do
   trait :admin, :user do
     exec :create_user do
       generate_args(fn -> %{role: :admin} end)
-      args_match(&match?(%{role: :admin}, &1)
+      args_match(&match?(%{role: :admin}, &1))
     end
   end
 
