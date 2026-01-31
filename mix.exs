@@ -16,6 +16,7 @@ defmodule SeedFactory.MixProject do
       docs: [
         logo: "logo.svg",
         main: "SeedFactory",
+        extras: ["CHANGELOG.md"],
         source_url: @source_url,
         source_ref: "v#{@version}"
       ],
@@ -30,7 +31,8 @@ defmodule SeedFactory.MixProject do
       description: "A toolkit for test data generation.",
       licenses: ["Apache-2.0"],
       links: %{
-        GitHub: @source_url
+        GitHub: @source_url,
+        Changelog: "https://hexdocs.pm/seed_factory/changelog.html"
       }
     ]
   end
