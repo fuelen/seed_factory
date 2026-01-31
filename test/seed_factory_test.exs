@@ -919,7 +919,7 @@ defmodule SeedFactoryTest do
       assert_raise ArgumentError,
                    ~r"""
                    Cannot apply trait :not_expired of entity :project to generated args for command :publish_project.
-                   Generated args: %\{expiry_date:\ ~D\[.+\],\ start_date:\ ~D\[.+\]\}
+                   Generated args: %\{(expiry_date|start_date):\ ~D\[.+\],\ (expiry_date|start_date):\ ~D\[.+\]\}
                    """,
                    fn -> produce(context, [:virtual_file, project: [:expired]]) end
     end
