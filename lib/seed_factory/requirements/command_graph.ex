@@ -28,13 +28,13 @@ defmodule SeedFactory.Requirements.CommandGraph do
       when command_names != [] do
     # if the command can be found in graph, and it doesn't have any conflict, it means, that it was requested
     # without ambiguity, so we can skip conflict resolution for the command
-    case Enum.find(
-           command_names,
-           fn command_name ->
-             Map.has_key?(graph.nodes, command_name) and
-               not node_or_anything_in_vertical_conflicts?(graph, command_name)
-           end
-         ) do
+    # If a command is already in the graph without conflict groups, it was either never
+    # conflicted or was already resolved via a trait. It's safe to link to it directly,
+    # even if it has vertical conflicts through other required_by paths.
+    case Enum.find(command_names, fn command_name ->
+           Map.has_key?(graph.nodes, command_name) and
+             graph.nodes[command_name].conflict_groups == []
+         end) do
       nil ->
         case analyze_conflict_group(graph, command_names) do
           :new_group ->
@@ -305,11 +305,6 @@ defmodule SeedFactory.Requirements.CommandGraph do
         end
       end
     )
-  end
-
-  def node_or_anything_in_vertical_conflicts?(%__MODULE__{nodes: nodes}, node_name) do
-    Map.fetch!(nodes, node_name).conflict_groups != [] or
-      anything_in_vertical_conflicts?(nodes, node_name)
   end
 
   defp anything_in_vertical_conflicts?(nodes, node_name) do
