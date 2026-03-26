@@ -382,60 +382,45 @@ defmodule SeedFactory.Requirements.CommandGraph do
     Enum.reduce(nodes, graph, fn {node_name, graph_node}, graph ->
       command = SeedFactory.Context.fetch_command!(context, node_name)
 
+      sibling_node_names =
+        graph_node.requires
+        |> Enum.flat_map(fn requires_node_name ->
+          Map.keys(Map.fetch!(nodes, requires_node_name).required_by)
+        end)
+        |> Enum.uniq()
+        |> Enum.reject(&(&1 in [nil, node_name]))
+
       node_names_that_delete_entities =
         Enum.flat_map(command.deleting_instructions, fn %{entity: entity} ->
-          graph_node.requires
-          |> Enum.flat_map(fn requires_node_name ->
-            Map.keys(Map.fetch!(nodes, requires_node_name).required_by)
-          end)
-          |> Enum.filter(fn required_by_node_name ->
-            required_by_node_name not in [nil, node_name] and
-              Map.has_key?(
-                SeedFactory.Context.fetch_command!(context, required_by_node_name).required_entities,
-                entity
-              )
+          Enum.filter(sibling_node_names, fn sibling ->
+            Map.has_key?(
+              SeedFactory.Context.fetch_command!(context, sibling).required_entities,
+              entity
+            )
           end)
         end)
 
       node_names_that_remove_traits =
         Enum.flat_map(command.updating_instructions, fn %{entity: entity} ->
           potentially_removes_traits =
-            Enum.flat_map(
-              SeedFactory.Context.get_traits(context, entity)[:by_command_name][command.name] ||
-                [],
-              fn trait ->
-                if is_nil(trait.from) do
-                  []
-                else
-                  [trait.from]
-                end
-              end
-            )
+            (SeedFactory.Context.get_traits(context, entity)[:by_command_name][command.name] ||
+               [])
+            |> Enum.flat_map(&List.wrap(&1.from))
             |> MapSet.new()
 
-          graph_node.requires
-          |> Enum.flat_map(fn requires_node_name ->
-            Map.keys(Map.fetch!(nodes, requires_node_name).required_by)
-          end)
-          |> Enum.uniq()
-          |> Enum.filter(fn
-            required_by_node_name ->
-              if required_by_node_name in [nil, node_name] do
-                false
-              else
-                case Map.fetch(
-                       SeedFactory.Context.fetch_command!(context, required_by_node_name).required_entities,
-                       entity
-                     ) do
-                  {:ok, required_entities} ->
-                    required_entities
-                    |> MapSet.intersection(potentially_removes_traits)
-                    |> Enum.any?()
+          Enum.filter(sibling_node_names, fn sibling ->
+            case Map.fetch(
+                   SeedFactory.Context.fetch_command!(context, sibling).required_entities,
+                   entity
+                 ) do
+              {:ok, required_entities} ->
+                required_entities
+                |> MapSet.intersection(potentially_removes_traits)
+                |> Enum.any?()
 
-                  :error ->
-                    false
-                end
-              end
+              :error ->
+                false
+            end
           end)
         end)
 
