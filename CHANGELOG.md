@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.7.1 (2026-03-26)
+
+### Bug Fixes
+
+- Fix trait-resolved node being overwritten by later conflict resolution
+- Fix warning from ex_docs
+- Fix flaky test
+
+### Improvements
+
+- Skip coverage for test/support files
+- Update dependencies
+
 ## v0.7.0 (2026-01-31)
 
 ### Features
