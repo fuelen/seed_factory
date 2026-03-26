@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.8.0 (unreleased)
+
+### Features
+
+- Add `SeedFactory.ExecError` — structured exception for resolver failures with execution plan, trails, and current traits
+- Add execution history to meta (`execution_history`) that records all produce/exec calls with caller, rebinding, and executed commands
+- Add `Context.track_execution/3` for automatic execution tracking
+- Add custom `Inspect` for SeedFactory.Execution with compact `#execution[...]` format
+
+### Breaking Changes
+
+- Resolver `{:error, error}` now raises `SeedFactory.ExecError` instead of `RuntimeError`
+
 ## v0.7.1 (2026-03-26)
 
 ### Bug Fixes

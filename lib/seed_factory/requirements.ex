@@ -21,12 +21,39 @@ defmodule SeedFactory.Requirements do
     context = requirements.context
     graph = requirements.graph
 
-    graph
-    |> CommandGraph.deprioritize_nodes_that_delete_entities_or_remove_traits(context)
-    |> CommandGraph.topologically_sorted_nodes()
+    sorted_nodes =
+      graph
+      |> CommandGraph.deprioritize_nodes_that_delete_entities_or_remove_traits(context)
+      |> CommandGraph.topologically_sorted_nodes()
+
+    sorted_nodes
     |> Enum.reduce(context, fn node, context ->
-      args = CommandGraph.Node.resolved_args(node)
-      exec_fn.(context, node.name, args)
+      try do
+        args = CommandGraph.Node.resolved_args(node)
+        exec_fn.(context, node.name, args)
+      rescue
+        e in SeedFactory.ExecError ->
+          completed = current_execution_commands(context)
+          execution_plan = build_execution_plan(sorted_nodes, completed, node.name)
+          reraise %{e | execution_plan: execution_plan}, __STACKTRACE__
+      end
+    end)
+  end
+
+  defp current_execution_commands(context) do
+    case context.__seed_factory_meta__.current_execution do
+      %{commands: commands} -> MapSet.new(commands)
+      nil -> MapSet.new()
+    end
+  end
+
+  defp build_execution_plan(sorted_nodes, completed, failed) do
+    Enum.map(sorted_nodes, fn node ->
+      cond do
+        node.name == failed -> {node.name, :failed}
+        MapSet.member?(completed, node.name) -> {node.name, :completed}
+        true -> {node.name, :pending}
+      end
     end)
   end
 

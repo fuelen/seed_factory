@@ -15,6 +15,8 @@ defmodule SchemaExample do
   defmodule Prize, do: defstruct([:id])
   defmodule Ceremony, do: defstruct([:id])
   defmodule Document, do: defstruct([:id, :profile_id, :verified_profile?])
+  defmodule FailingEntity, do: defstruct([:id])
+  defmodule EntityNeedingFailingDep, do: defstruct([:id])
 
   defmodule Project do
     defstruct [
@@ -57,11 +59,33 @@ defmodule SchemaExample do
   end
 
   command :resolve_with_error do
+    param :office, entity: :office
+
     resolve(fn _args ->
       {:error, %{message: "OOPS", other_key: :data}}
     end)
 
     update :user
+  end
+
+  command :create_failing_entity do
+    param :office, entity: :office
+
+    resolve(fn _args ->
+      raise "resolver failed"
+    end)
+
+    produce :failing_entity, from: :result
+  end
+
+  command :create_entity_needing_failing_dep do
+    param :failing_entity, entity: :failing_entity
+
+    resolve(fn _args ->
+      {:ok, %{result: %EntityNeedingFailingDep{id: gen_id()}}}
+    end)
+
+    produce :entity_needing_failing_dep, from: :result
   end
 
   command :create_org do

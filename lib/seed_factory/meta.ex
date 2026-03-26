@@ -1,16 +1,18 @@
 defmodule SeedFactory.Meta do
   @moduledoc false
   @derive {Inspect,
-           only: [:entities_rebinding, :current_traits, :trails],
-           optional: [:entities_rebinding, :current_traits, :trails]}
+           only: [:entities_rebinding, :current_traits, :trails, :execution_history],
+           optional: [:entities_rebinding, :current_traits, :trails, :execution_history]}
   defstruct [
     :entities,
     :commands,
     :traits,
     :create_dependent_entities?,
+    :current_execution,
     entities_rebinding: %{},
     current_traits: %{},
-    trails: %{}
+    trails: %{},
+    execution_history: []
   ]
 
   def new(schema) do

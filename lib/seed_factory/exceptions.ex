@@ -356,3 +356,75 @@ defmodule SeedFactory.ConflictingTraitsError do
     }
   end
 end
+
+defmodule SeedFactory.ExecError do
+
+  defexception [
+    :command,
+    :exception,
+    :error,
+    :stacktrace,
+    :execution_plan,
+    :trails,
+    :current_traits
+  ]
+
+  @impl true
+  def message(%__MODULE__{} = error) do
+    [
+      header(error),
+      execution_plan_section(error.execution_plan),
+      trails_section(error.trails),
+      current_traits_section(error.current_traits),
+      original_exception_section(error.exception)
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n\n")
+  end
+
+  defp header(%{exception: exception, command: command}) when exception != nil do
+    "exception in #{inspect(command)} command"
+  end
+
+  defp header(%{error: error, command: command}) do
+    "unable to execute #{inspect(command)} command: #{inspect(error)}"
+  end
+
+  defp execution_plan_section(nil), do: nil
+
+  defp execution_plan_section(plan) do
+    items =
+      Enum.map_join(plan, "\n", fn
+        {command, :completed} -> "  \u2714 #{inspect(command)}"
+        {command, :failed} -> "  \u2716 #{inspect(command)}"
+        {command, :pending} -> "  \u00b7 #{inspect(command)}"
+      end)
+
+    "Execution plan:\n" <> items
+  end
+
+  defp trails_section(trails) when trails == %{}, do: nil
+
+  defp trails_section(trails) do
+    items =
+      trails
+      |> Enum.sort_by(&elem(&1, 0))
+      |> Enum.map_join("\n", fn {binding, trail} ->
+        "  #{binding}: #{inspect(trail, syntax_colors: [])}"
+      end)
+
+    "Trails:\n" <> items
+  end
+
+  defp current_traits_section(traits) when traits == %{}, do: nil
+
+  defp current_traits_section(traits) do
+    "Current traits:\n  #{inspect(traits, custom_options: [sort_maps: true])}"
+  end
+
+  defp original_exception_section(nil), do: nil
+
+  defp original_exception_section(exception) do
+    "Original exception:\n  #{Exception.format_banner(:error, exception)}"
+  end
+end

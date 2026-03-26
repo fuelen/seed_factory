@@ -274,4 +274,40 @@ defmodule SeedFactory.Context do
       delete_entity!(context, entity_name, command.name)
     end)
   end
+
+  def track_execution(
+        %{__seed_factory_meta__: %{current_execution: nil}} = context,
+        caller,
+        callback
+      )
+      when is_function(callback, 1) do
+    meta = context.__seed_factory_meta__
+
+    execution = %SeedFactory.Execution{
+      caller: caller,
+      rebinding: meta.entities_rebinding,
+      commands: []
+    }
+
+    context =
+      context
+      |> put_meta(:current_execution, execution)
+      |> callback.()
+
+    context
+    |> update_meta(:execution_history, &[context.__seed_factory_meta__.current_execution | &1])
+    |> put_meta(:current_execution, nil)
+  end
+
+  def track_execution(context, _caller, callback), do: callback.(context)
+
+  def record_command(context, command_name) do
+    case context.__seed_factory_meta__.current_execution do
+      %{commands: commands} = execution ->
+        put_meta(context, :current_execution, %{execution | commands: [command_name | commands]})
+
+      nil ->
+        context
+    end
+  end
 end

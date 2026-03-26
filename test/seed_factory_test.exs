@@ -95,17 +95,221 @@ defmodule SeedFactoryTest do
   end
 
   test "resolver returns an error", context do
-    assert_raise RuntimeError,
-                 ~s|Unable to execute :resolve_with_error command: %{message: "OOPS", other_key: :data}|,
-                 fn ->
-                   exec(context, :resolve_with_error)
-                 end
+    error =
+      assert_raise SeedFactory.ExecError, fn ->
+        exec(context, :resolve_with_error)
+      end
+
+    assert error.command == :resolve_with_error
+    assert error.error == %{message: "OOPS", other_key: :data}
+    assert error.exception == nil
+    assert error.stacktrace == nil
+
+    assert [
+             {:create_org, :completed},
+             {:create_office, :completed},
+             {:resolve_with_error, :failed}
+           ] = error.execution_plan
+
+    assert Exception.message(error) ==
+             """
+             unable to execute :resolve_with_error command: %{message: "OOPS", other_key: :data}
+
+             Execution plan:
+               ✔ :create_org
+               ✔ :create_office
+               ✖ :resolve_with_error
+
+             Trails:
+               office: #trail[:create_office]
+               org: #trail[:create_org]
+
+             Current traits:
+               %{office: [], org: []}\
+             """
   end
 
   test "resolver raises an exception", context do
-    assert_raise RuntimeError, "BOOM", fn ->
+    error =
+      assert_raise SeedFactory.ExecError, fn ->
+        exec(context, :create_failing_entity)
+      end
+
+    assert error.command == :create_failing_entity
+    assert %RuntimeError{message: "resolver failed"} = error.exception
+    assert is_list(error.stacktrace)
+
+    assert [
+             {:create_org, :completed},
+             {:create_office, :completed},
+             {:create_failing_entity, :failed}
+           ] = error.execution_plan
+
+    assert Exception.message(error) ==
+             """
+             exception in :create_failing_entity command
+
+             Execution plan:
+               ✔ :create_org
+               ✔ :create_office
+               ✖ :create_failing_entity
+
+             Trails:
+               office: #trail[:create_office]
+               org: #trail[:create_org]
+
+             Current traits:
+               %{office: [], org: []}
+
+             Original exception:
+               ** (RuntimeError) resolver failed\
+             """
+  end
+
+  test "produce wraps exception with execution plan", context do
+    error =
+      assert_raise SeedFactory.ExecError, fn ->
+        produce(context, :failing_entity)
+      end
+
+    assert error.command == :create_failing_entity
+    assert %RuntimeError{message: "resolver failed"} = error.exception
+
+    assert [
+             {:create_org, :completed},
+             {:create_office, :completed},
+             {:create_failing_entity, :failed}
+           ] = error.execution_plan
+
+    assert Exception.message(error) ==
+             """
+             exception in :create_failing_entity command
+
+             Execution plan:
+               ✔ :create_org
+               ✔ :create_office
+               ✖ :create_failing_entity
+
+             Trails:
+               office: #trail[:create_office]
+               org: #trail[:create_org]
+
+             Current traits:
+               %{office: [], org: []}
+
+             Original exception:
+               ** (RuntimeError) resolver failed\
+             """
+  end
+
+  test "dependency failure in exec propagates ExecError with execution plan", context do
+    error =
+      assert_raise SeedFactory.ExecError, fn ->
+        exec(context, :create_entity_needing_failing_dep)
+      end
+
+    assert error.command == :create_failing_entity
+    assert %RuntimeError{message: "resolver failed"} = error.exception
+
+    assert [
+             {:create_org, :completed},
+             {:create_office, :completed},
+             {:create_failing_entity, :failed}
+           ] = error.execution_plan
+
+    assert Exception.message(error) ==
+             """
+             exception in :create_failing_entity command
+
+             Execution plan:
+               ✔ :create_org
+               ✔ :create_office
+               ✖ :create_failing_entity
+
+             Trails:
+               office: #trail[:create_office]
+               org: #trail[:create_org]
+
+             Current traits:
+               %{office: [], org: []}
+
+             Original exception:
+               ** (RuntimeError) resolver failed\
+             """
+  end
+
+  test "produce shows pending commands in execution plan", context do
+    error =
+      assert_raise SeedFactory.ExecError, fn ->
+        produce(context, :entity_needing_failing_dep)
+      end
+
+    assert error.command == :create_failing_entity
+
+    assert [
+             {:create_org, :completed},
+             {:create_office, :completed},
+             {:create_failing_entity, :failed},
+             {:create_entity_needing_failing_dep, :pending}
+           ] = error.execution_plan
+
+    assert Exception.message(error) ==
+             """
+             exception in :create_failing_entity command
+
+             Execution plan:
+               ✔ :create_org
+               ✔ :create_office
+               ✖ :create_failing_entity
+               · :create_entity_needing_failing_dep
+
+             Trails:
+               office: #trail[:create_office]
+               org: #trail[:create_org]
+
+             Current traits:
+               %{office: [], org: []}
+
+             Original exception:
+               ** (RuntimeError) resolver failed\
+             """
+  end
+
+  test "ExecError preserves original stacktrace", context do
+    context = produce(context, :user)
+
+    try do
       exec(context, :raise_exception)
+    rescue
+      _e in SeedFactory.ExecError ->
+        # The stacktrace should contain the resolver location (schema_example.ex)
+        stacktrace_modules = Enum.map(__STACKTRACE__, &elem(&1, 0))
+        assert SchemaExample in stacktrace_modules
     end
+  end
+
+  test "execution_history tracks completed operations", context do
+    context =
+      context
+      |> produce(:user)
+      |> rebind([user: :user2, profile: :profile2], &produce(&1, :user))
+      |> exec(:activate_user)
+
+    assert [
+             %SeedFactory.Execution{
+               caller: {:exec, :activate_user},
+               commands: [:activate_user]
+             },
+             %SeedFactory.Execution{
+               caller: {:produce, [{:user, []}]},
+               commands: [:create_pending_user],
+               rebinding: %{user: :user2, profile: :profile2}
+             },
+             %SeedFactory.Execution{
+               caller: {:produce, [{:user, []}]},
+               commands: [:create_pending_user, :create_office, :create_org]
+             }
+           ] = context.__seed_factory_meta__.execution_history
   end
 
   test "updating a value in the context", context do

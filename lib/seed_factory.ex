@@ -167,27 +167,24 @@ defmodule SeedFactory do
 
   As was pointed out previously, traits are assigned to entities when commands produce/update them.
   `SeedFactory` does this automatically by tracking commands and arguments.
-  You can inspect `__seed_factory_meta__` key in the context to review currently assigned traits:
+  You can inspect `__seed_factory_meta__` key in the context to review currently assigned traits and execution history:
 
   ```elixir
-  context |> exec(:create_user) |> IO.inspect()
+  context |> produce(user: [:admin, :active]) |> IO.inspect()
   # %{
   # __seed_factory_meta__: #SeedFactory.Meta<
-  #   current_traits: %{user: [:normal, :pending]},
-  #   ...
-  # >,
-  # ...
-  # }
-
-  context |> exec(:create_user, role: :admin) |> exec(:activate_user) |> IO.inspect()
-  # %{
-  # __seed_factory_meta__: #SeedFactory.Meta<
-  #   current_traits: %{user: [:admin, :active]},
+  #   current_traits: %{user: [:admin, :active], ...},
+  #   execution_history: [
+  #     #execution[produce(user: [:admin, :active]): create_company → create_user → activate_user]
+  #   ],
   #   ...
   # >,
   # ...
   # }
   ```
+
+  If an exception or error occurs during command execution, `SeedFactory` raises `SeedFactory.ExecError`
+  with structured metadata including the execution plan, trails, and current traits at the time of failure.
 
   The same result can be achieved by passing traits using `produce/2`:
   ```elixir
@@ -284,16 +281,22 @@ defmodule SeedFactory do
       when is_map_key(context, :__seed_factory_meta__) and is_list(entities_and_rebinding) do
     {entities_with_trait_names, rebinding} = split_entities_and_rebinding(entities_and_rebinding)
 
-    Context.rebind(context, rebinding, fn context ->
-      Context.lock_creation_of_dependent_entities(context, fn context ->
-        context
-        |> Requirements.new(entities_with_trait_names)
-        |> Requirements.for_entities_with_trait_names(entities_with_trait_names, nil)
-        |> Requirements.unwrap!()
-        |> Requirements.resolve_conflicts()
-        |> Requirements.apply_to_context(&exec/3)
-      end)
-    end)
+    Context.track_execution(
+      context,
+      {:produce, entities_with_trait_names},
+      fn context ->
+        Context.rebind(context, rebinding, fn context ->
+          Context.lock_creation_of_dependent_entities(context, fn context ->
+            context
+            |> Requirements.new(entities_with_trait_names)
+            |> Requirements.for_entities_with_trait_names(entities_with_trait_names, nil)
+            |> Requirements.unwrap!()
+            |> Requirements.resolve_conflicts()
+            |> Requirements.apply_to_context(&exec/3)
+          end)
+        end)
+      end
+    )
   end
 
   def produce(context, entity)
@@ -327,17 +330,23 @@ defmodule SeedFactory do
       when is_map_key(context, :__seed_factory_meta__) and is_list(entities_and_rebinding) do
     {entities_with_trait_names, rebinding} = split_entities_and_rebinding(entities_and_rebinding)
 
-    Context.rebind(context, rebinding, fn context ->
-      Context.lock_creation_of_dependent_entities(context, fn context ->
-        context
-        |> Requirements.new(entities_with_trait_names)
-        |> Requirements.for_entities_with_trait_names(entities_with_trait_names, nil)
-        |> Requirements.unwrap!()
-        |> Requirements.resolve_conflicts()
-        |> Requirements.delete_explicitly_requested_commands()
-        |> Requirements.apply_to_context(&exec/3)
-      end)
-    end)
+    Context.track_execution(
+      context,
+      {:pre_produce, entities_with_trait_names},
+      fn context ->
+        Context.rebind(context, rebinding, fn context ->
+          Context.lock_creation_of_dependent_entities(context, fn context ->
+            context
+            |> Requirements.new(entities_with_trait_names)
+            |> Requirements.for_entities_with_trait_names(entities_with_trait_names, nil)
+            |> Requirements.unwrap!()
+            |> Requirements.resolve_conflicts()
+            |> Requirements.delete_explicitly_requested_commands()
+            |> Requirements.apply_to_context(&exec/3)
+          end)
+        end)
+      end
+    )
   end
 
   def pre_produce(context, entity)
@@ -382,8 +391,16 @@ defmodule SeedFactory do
       when is_map_key(context, :__seed_factory_meta__) and is_atom(command_name) and
              (is_map(initial_input) or is_list(initial_input)) do
     command = Context.fetch_command!(context, command_name)
-
     initial_input = Map.new(initial_input)
+
+    Context.track_execution(
+      context,
+      {:exec, command_name},
+      &exec_command(&1, command, initial_input)
+    )
+  end
+
+  defp exec_command(context, command, initial_input) do
     context = create_dependent_entities_if_needed(context, command, initial_input)
 
     args =
@@ -393,17 +410,14 @@ defmodule SeedFactory do
         &Context.fetch_entity!(context, &1)
       )
 
-    case command.resolve.(args) do
-      {:ok, resolver_output} when is_map(resolver_output) ->
-        context
-        |> Context.exec_producing_instructions(command, resolver_output)
-        |> Context.exec_updating_instructions(command, resolver_output)
-        |> Context.exec_deleting_instructions(command)
-        |> Context.store_trails_and_sync_current_traits(command, args)
+    resolver_output = resolve!(command, args, context.__seed_factory_meta__)
 
-      {:error, error} ->
-        raise "Unable to execute #{inspect(command_name)} command: #{inspect(error)}"
-    end
+    context
+    |> Context.exec_producing_instructions(command, resolver_output)
+    |> Context.exec_updating_instructions(command, resolver_output)
+    |> Context.exec_deleting_instructions(command)
+    |> Context.store_trails_and_sync_current_traits(command, args)
+    |> Context.record_command(command.name)
   end
 
   @doc """
@@ -442,7 +456,52 @@ defmodule SeedFactory do
     command = Context.fetch_command!(context, command_name)
 
     initial_input = Map.new(initial_input)
-    create_dependent_entities_if_needed(context, command, initial_input)
+
+    Context.track_execution(context, {:pre_exec, command_name}, fn context ->
+      create_dependent_entities_if_needed(context, command, initial_input)
+    end)
+  end
+
+  defp resolve!(command, args, meta) do
+    try do
+      command.resolve.(args)
+    rescue
+      e ->
+        reraise build_exec_error(meta, command.name, exception: e, stacktrace: __STACKTRACE__),
+                __STACKTRACE__
+    end
+    |> case do
+      {:ok, resolver_output} when is_map(resolver_output) ->
+        resolver_output
+
+      {:error, error} ->
+        raise build_exec_error(meta, command.name, error: error)
+    end
+  end
+
+  defp build_exec_error(meta, command_name, extra) do
+    plan =
+      case meta.current_execution do
+        %{commands: [_ | _] = commands} ->
+          commands
+          |> Enum.map(&{&1, :completed})
+          |> Enum.reverse([{command_name, :failed}])
+
+        _ ->
+          nil
+      end
+
+    SeedFactory.ExecError.exception(
+      Keyword.merge(
+        [
+          command: command_name,
+          execution_plan: plan,
+          trails: meta.trails,
+          current_traits: meta.current_traits
+        ],
+        extra
+      )
+    )
   end
 
   defp create_dependent_entities_if_needed(context, command, initial_input) do

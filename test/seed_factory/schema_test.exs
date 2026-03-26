@@ -55,6 +55,8 @@ defmodule SeedFactory.SchemaTest do
       :import_draft_project_from_ftp_server
     ],
     email: [:publish_project, :suspend_user],
+    entity_needing_failing_dep: [:create_entity_needing_failing_dep],
+    failing_entity: [:create_failing_entity],
     files_removal_task: [:schedule_files_removal],
     imported_item_log: [
       :import_draft_project_from_third_party_service,
@@ -396,6 +398,48 @@ defmodule SeedFactory.SchemaTest do
         },
         producing_instructions: [
           %SeedFactory.ProducingInstruction{entity: :draft_project, from: :project}
+        ],
+        required_entities: %{office: MapSet.new([])},
+        updating_instructions: []
+      },
+      create_entity_needing_failing_dep: %SeedFactory.Command{
+        deleting_instructions: [],
+        name: :create_entity_needing_failing_dep,
+        params: %{
+          failing_entity: %SeedFactory.Parameter{
+            entity: :failing_entity,
+            generate: nil,
+            map: nil,
+            name: :failing_entity,
+            params: %{},
+            type: :entity,
+            value: nil,
+            with_traits: nil
+          }
+        },
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :entity_needing_failing_dep, from: :result}
+        ],
+        required_entities: %{failing_entity: MapSet.new([])},
+        updating_instructions: []
+      },
+      create_failing_entity: %SeedFactory.Command{
+        deleting_instructions: [],
+        name: :create_failing_entity,
+        params: %{
+          office: %SeedFactory.Parameter{
+            entity: :office,
+            generate: nil,
+            map: nil,
+            name: :office,
+            params: %{},
+            type: :entity,
+            value: nil,
+            with_traits: nil
+          }
+        },
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :failing_entity, from: :result}
         ],
         required_entities: %{office: MapSet.new([])},
         updating_instructions: []
@@ -808,9 +852,20 @@ defmodule SeedFactory.SchemaTest do
       resolve_with_error: %SeedFactory.Command{
         deleting_instructions: [],
         name: :resolve_with_error,
-        params: %{},
+        params: %{
+          office: %SeedFactory.Parameter{
+            entity: :office,
+            generate: nil,
+            map: nil,
+            name: :office,
+            params: %{},
+            type: :entity,
+            value: nil,
+            with_traits: nil
+          }
+        },
         producing_instructions: [],
-        required_entities: %{},
+        required_entities: %{office: MapSet.new([])},
         updating_instructions: [
           %SeedFactory.UpdatingInstruction{entity: :user, from: :user}
         ]
