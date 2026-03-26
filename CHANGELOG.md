@@ -69,7 +69,7 @@
 
 - Better conflict resolution when merging trait arguments
 - Validate entity existence in `rebind/3` - raises `ArgumentError` for unknown entities
-- Custom `Inspect` implementation for `SeedFactory.Command` for cleaner output
+- Custom Inspect implementation for SeedFactory.Command for cleaner output
 
 ### Bug Fixes
 
