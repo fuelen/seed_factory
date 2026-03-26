@@ -39,10 +39,11 @@ defmodule SeedFactory.VerticalConflictTest do
       param :rack, entity: :rack
 
       resolve(fn _ ->
-        {:ok, %{
-          parcel: %{id: gen_id(), source: :auto},
-          tracking_label: %{id: gen_id(), source: :auto}
-        }}
+        {:ok,
+         %{
+           parcel: %{id: gen_id(), source: :auto},
+           tracking_label: %{id: gen_id(), source: :auto}
+         }}
       end)
 
       produce :parcel
