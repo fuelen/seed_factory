@@ -302,12 +302,7 @@ defmodule SeedFactory.Context do
   def track_execution(context, _caller, callback), do: callback.(context)
 
   def record_command(context, command_name) do
-    case context.__seed_factory_meta__.current_execution do
-      %{commands: commands} = execution ->
-        put_meta(context, :current_execution, %{execution | commands: [command_name | commands]})
-
-      nil ->
-        context
-    end
+    %{commands: commands} = execution = context.__seed_factory_meta__.current_execution
+    put_meta(context, :current_execution, %{execution | commands: [command_name | commands]})
   end
 end

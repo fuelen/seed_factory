@@ -358,7 +358,6 @@ defmodule SeedFactory.ConflictingTraitsError do
 end
 
 defmodule SeedFactory.ExecError do
-
   defexception [
     :command,
     :exception,

@@ -33,25 +33,19 @@ defmodule SeedFactory.Requirements do
         exec_fn.(context, node.name, args)
       rescue
         e in SeedFactory.ExecError ->
-          completed = current_execution_commands(context)
-          execution_plan = build_execution_plan(sorted_nodes, completed, node.name)
+          execution_plan = build_execution_plan(sorted_nodes, context, node.name)
           reraise %{e | execution_plan: execution_plan}, __STACKTRACE__
       end
     end)
   end
 
-  defp current_execution_commands(context) do
-    case context.__seed_factory_meta__.current_execution do
-      %{commands: commands} -> MapSet.new(commands)
-      nil -> MapSet.new()
-    end
-  end
+  defp build_execution_plan(sorted_nodes, context, failed) do
+    %{commands: completed} = context.__seed_factory_meta__.current_execution
 
-  defp build_execution_plan(sorted_nodes, completed, failed) do
     Enum.map(sorted_nodes, fn node ->
       cond do
         node.name == failed -> {node.name, :failed}
-        MapSet.member?(completed, node.name) -> {node.name, :completed}
+        node.name in completed -> {node.name, :completed}
         true -> {node.name, :pending}
       end
     end)

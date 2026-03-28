@@ -178,10 +178,7 @@ defmodule SeedFactory.Transformers.IndexTraits do
   end
 
   defp traverse_from(trait_name, traits_by_name, in_path, path_list, visited, entity) do
-    case traits_by_name[trait_name] do
-      nil ->
-        visited
-
+    case Map.fetch!(traits_by_name, trait_name) do
       %{from: nil} ->
         visited
 

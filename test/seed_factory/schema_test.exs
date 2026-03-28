@@ -2047,5 +2047,151 @@ defmodule SeedFactory.SchemaTest do
         end
       )
     end
+
+    test "raises when trait from list contains invalid reference" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> done -> task defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          unknown trait :reviewd in `from` option, did you mean :reviewed?
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_task do
+              resolve(fn _ -> {:ok, %{task: %{id: 1}}} end)
+              produce :task
+            end
+
+            command :advance_task do
+              param :task, entity: :task
+              resolve(fn _ -> {:ok, %{task: %{id: 1}}} end)
+              update :task
+            end
+
+            command :complete_task do
+              param :task, entity: :task
+              resolve(fn _ -> {:ok, %{task: %{id: 1}}} end)
+              update :task
+            end
+
+            trait :started, :task do
+              exec :create_task
+            end
+
+            trait :reviewed, :task do
+              from :started
+              exec :advance_task
+            end
+
+            trait :done, :task do
+              from [:started, :reviewd]
+              exec :complete_task
+            end
+          end
+        end
+      )
+    end
+
+    test "raises when trait from list references trait from different entity" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> done -> task defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          trait :other_trait in `from` option belongs to entity :other, not :task
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_task do
+              resolve(fn _ -> {:ok, %{task: %{id: 1}}} end)
+              produce :task
+            end
+
+            command :create_other do
+              resolve(fn _ -> {:ok, %{other: %{id: 1}}} end)
+              produce :other
+            end
+
+            command :complete_task do
+              param :task, entity: :task
+              resolve(fn _ -> {:ok, %{task: %{id: 1}}} end)
+              update :task
+            end
+
+            trait :started, :task do
+              exec :create_task
+            end
+
+            trait :other_trait, :other do
+              exec :create_other
+            end
+
+            trait :done, :task do
+              from [:started, :other_trait]
+              exec :complete_task
+            end
+          end
+        end
+      )
+    end
+
+    test "include_schema merges entities from included schema" do
+      defmodule BaseSchema do
+        use SeedFactory.Schema
+
+        command :create_item do
+          resolve(fn _ -> {:ok, %{item: %{id: 1}}} end)
+          produce :item
+        end
+      end
+
+      defmodule ExtendedSchema do
+        use SeedFactory.Schema
+
+        include_schema BaseSchema
+
+        command :create_order do
+          param :item, entity: :item
+          resolve(fn _ -> {:ok, %{order: %{id: 1}}} end)
+          produce :order
+        end
+      end
+
+      entities = Spark.Dsl.Extension.get_persisted(ExtendedSchema, :entities)
+      assert Map.has_key?(entities, :item)
+      assert Map.has_key?(entities, :order)
+    end
+
+    test "param references unknown entity inside container" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> command -> create_post defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          param :author references unknown entity :users, did you mean :user?
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_user do
+              resolve(fn _ -> {:ok, %{user: %{id: 1}}} end)
+              produce :user
+            end
+
+            command :create_post do
+              param :metadata do
+                param :author, entity: :users
+              end
+
+              resolve(fn _ -> {:ok, %{post: %{id: 1}}} end)
+              produce :post
+            end
+          end
+        end
+      )
+    end
   end
 end

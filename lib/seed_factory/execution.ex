@@ -22,9 +22,8 @@ defmodule SeedFactory.Execution do
     defp format_caller({type, args}, opts) when is_list(args) do
       args_doc =
         args
-        |> Enum.map(fn
-          {key, value} -> concat([Atom.to_string(key), ": ", to_doc(value, opts)])
-          atom when is_atom(atom) -> Atom.to_string(atom)
+        |> Enum.map(fn {key, value} ->
+          concat([Atom.to_string(key), ": ", to_doc(value, opts)])
         end)
         |> Enum.intersperse(", ")
         |> concat()
