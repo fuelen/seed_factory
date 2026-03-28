@@ -1,22 +1,23 @@
 defmodule SeedFactory.Test do
   @moduledoc """
-  A helper module for `ExUnit`.
+  Integrates `SeedFactory` with `ExUnit`.
 
   ## Usage
 
   Add the following line to your test modules:
-  ```
+  ```elixir
   use SeedFactory.Test, schema: MySeedFactorySchema
   ```
-  It sets up `SeedFactory` by invoking `SeedFactory.init/2` in `ExUnit.Callbacks.setup_all/2` block and imports the following functions:
-    * `produce/1`
-    * `SeedFactory.rebind/3`
-    * `SeedFactory.produce/2`
-    * `SeedFactory.exec/2`
+
+  This will:
+  * initialize the schema via `SeedFactory.init/2` in a `setup_all` callback
+  * import `SeedFactory` functions:
     * `SeedFactory.exec/3`
-    * `SeedFactory.pre_exec/2`
+    * `SeedFactory.produce/2`
+    * `SeedFactory.rebind/3`
     * `SeedFactory.pre_exec/3`
     * `SeedFactory.pre_produce/2`
+  * import the `produce/1` macro (see below)
   """
   defmacro __using__(opts) do
     quote bind_quoted: [opts: opts] do
@@ -34,9 +35,21 @@ defmodule SeedFactory.Test do
   end
 
   @doc """
-  A macro that implicitly passes `context` and allows usage of `SeedFactory.produce/2` outside the `test` block.
+  A macro for producing entities outside of `test` blocks.
 
-  Basically, it creates a `ExUnit.Callbacks.setup/2` block and calls `SeedFactory.produce/2` inside.
+  Generates a `setup` callback that calls `SeedFactory.produce/2`, so the entities
+  are available in all tests within the scope. Accepts the same arguments as `produce/2`. This:
+
+      produce [:company, user: [:active, :admin]]
+
+  is equivalent to:
+
+      setup context do
+        produce(context, [:company, user: [:active, :admin]])
+      end
+
+  Can only be called outside of `test` blocks. For producing entities inside a test,
+  use `SeedFactory.produce/2` directly.
 
   ## Examples
 
@@ -49,10 +62,10 @@ defmodule SeedFactory.Test do
   ```
 
   ```elixir
-  produce [:user, :project]
+  produce [:company, user: [:active, :admin, as: :active_admin]]
 
-  test "my test", %{user: user, project: project} do
-    assert my_function(project, user)
+  test "my test", %{company: company, active_admin: admin} do
+    assert my_function(company, admin)
   end
   ```
 
