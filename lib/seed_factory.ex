@@ -8,29 +8,32 @@ defmodule SeedFactory do
   This approach allows you to minimize testing of invalid states as you're not forced to keep complex database structure in your head in order to prepare test data.
   The library is completely agnostic to the database toolkit.
 
-  **Context**, **entities** and **commands** are the core concepts of the library.
+  ## Core concepts
 
-  Context is a `t:map/0` which can be populated with entities using commands.
+  **Context** is a `t:map/0` which can be populated with entities using commands.
 
   The schema with instructions on how commands modify context is described using DSL with the help of `SeedFactory.Schema` module.
 
-  Commands can be used to:
+  **Commands** can be used to:
   * produce entity (put new data in the context)
   * update entity (replace the existing entity in the context)
   * delete entity (remove the entity from the context)
 
-  When a command is executed, produced entities are assigned to the context using the name of the entity as a key.
   A command has params with instructions on how to generate arguments for a resolver if they are not passed explicitly with `exec/3` function.
   The instruction can be specified using one of these options:
   * `:value` - any term. This option is used by default with the value of `nil`.
   * `:generate` - a zero-arity function for generating data.
   * `:entity` - an atom which points to an entity which should be taken from the context. If a required entity cannot
   be found in a context, then `SeedFactory` automatically executes a corresponding command which produces the entity.
+  The `:entity` option also supports `:with_traits` to require that the entity has specific traits before it can be used as a dependency.
 
-  Entities can have traits.
-  Think about them as labels which are assigned to produced/updated entities when specific commands with specific arguments are executed.
+  **Traits** are labels assigned to entities when specific commands with specific arguments are executed.
+  They describe how an entity was created or what state it is in. Traits can build on each other using `from` —
+  for example, an `:active` trait can require `:pending` first, meaning the entity must go through the `:pending`
+  state before becoming `:active`. Traits can also be tied to specific argument values using `args_pattern`.
 
-  Let's take a look at an example of a simple schema.
+  ## Schema example
+
   ```elixir
   defmodule MyApp.SeedFactorySchema do
     use SeedFactory.Schema
@@ -59,6 +62,7 @@ defmodule SeedFactory do
     end
 
     command :activate_user do
+      # with_traits ensures the user has the :pending trait before activation
       param :user, entity: :user, with_traits: [:pending]
 
       resolve(fn args ->
@@ -70,15 +74,18 @@ defmodule SeedFactory do
       update :user
     end
 
+    # :pending is assigned when :create_user is executed
     trait :pending, :user do
       exec :create_user
     end
 
+    # :active requires :pending first — :activate_user replaces :pending with :active
     trait :active, :user do
       from :pending
       exec :activate_user
     end
 
+    # :admin and :normal are determined by the :role argument
     trait :admin, :user do
       exec :create_user, args_pattern: %{role: :admin}
     end
@@ -88,9 +95,8 @@ defmodule SeedFactory do
     end
   end
   ```
-  The schema above describes how to produce 3 entities (`:company`, `:user` and `:profile`) using 2 commands (`:create_user` and `:create_company`).
-  There is a third command which only updates the `:user` entity.
-  There are 4 traits defined for the `:user` entity.
+
+  ## Getting started
 
   To start using the schema, put metadata about it to the context using `init/2` function:
   ```elixir
@@ -100,7 +106,9 @@ defmodule SeedFactory do
   If you use `SeedFactory` in tests with `ExUnit`, check out `SeedFactory.Test`. This module adds initialization using `ExUnit.Callbacks.setup_all/2` callback
   and imports functions.
 
-  Now, `exec/2` function can be used to execute a command:
+  ## exec
+
+  `exec/2` function can be used to execute a command:
   ```elixir
   context = exec(context, :create_company)
   ```
@@ -124,28 +132,47 @@ defmodule SeedFactory do
   context = exec(context, :create_user, name: "John Doe")
   ```
 
-  If you're not interested in explicit providing of parameters to commands, then you can use `produce/2` function to produce
+  ## produce
+
+  If you're not interested in explicitly providing parameters to commands, you can use `produce/2` to produce
   requested entities with automatic execution of all dependent commands:
   ```elixir
   context = produce(context, :user)
   ```
   Even though `:user` is the only entity specified explicitly, `context` will have 3 new keys: `:company`, `:user` and `:profile`.
 
+  Traits can be specified to control how entities are created. SeedFactory figures out
+  the command chain from the trait definitions:
+  ```elixir
+  # these two are equivalent
+  context = produce(context, user: [:admin, :active])
+
+  context =
+    context
+    |> exec(:create_user, role: :admin)
+    |> exec(:activate_user)
+  ```
+
+  Use the `:as` option to combine traits with rebinding:
+  ```elixir
+  %{active_admin: active_admin} = produce(context, user: [:admin, :active, as: :active_admin])
+  ```
+
   > #### Tip {: .tip}
-  > It is recommended to explicitly specify all entities in which you're interested:
+  > Pattern match on what you pass to `produce/2`. This makes the test self-documenting
+  > and avoids relying on implicitly created entities:
   > ```elixir
-  > # good
+  > # good — matches what was requested
   > %{user: user} = produce(context, :user)
   >
-  > # good
+  > # good — multiple entities requested and matched
   > %{user: user, profile: profile} = produce(context, [:user, :profile])
   >
-  > # good
-  > %{user: user, company: company} = produce(context, [:user, :company])
-  >
-  > # bad
+  > # bad — matching entities that were not explicitly requested
   > %{user: user, profile: profile, company: company} = produce(context, :user)
   > ```
+
+  ## Rebinding
 
   `exec/3` fails if produced entities are already present in the context.
   It is possible to rebind entities in order to assign them to the context with different names:
@@ -165,35 +192,44 @@ defmodule SeedFactory do
     |> produce(user: :user2, profile: :profile2)
   ```
 
-  As was pointed out previously, traits are assigned to entities when commands produce/update them.
-  `SeedFactory` does this automatically by tracking commands and arguments.
+  ## Debugging
+
+  `SeedFactory` tracks how each entity was created and modified.
   You can inspect `__seed_factory_meta__` key in the context to review currently assigned traits and execution history:
 
   ```elixir
   context |> produce(user: [:admin, :active]) |> IO.inspect()
   # %{
-  # __seed_factory_meta__: #SeedFactory.Meta<
-  #   current_traits: %{user: [:admin, :active], ...},
-  #   execution_history: [
-  #     #execution[produce(user: [:admin, :active]): create_company → create_user → activate_user]
-  #   ],
-  #   ...
-  # >,
-  # ...
+  #   __seed_factory_meta__: #SeedFactory.Meta<
+  #     current_traits: %{company: [], profile: [], user: [:admin, :active]},
+  #     trails: %{
+  #       company: #trail[:create_company],
+  #       profile: #trail[:create_user],
+  #       user: #trail[create_user: +[:pending, :admin] -> activate_user: +[:active] -[:pending]]
+  #     },
+  #     execution_history: [
+  #       #execution[produce(user: [:admin, :active]): create_company → create_user → activate_user]
+  #     ],
+  #     ...
+  #   >,
+  #   company: %Company{...},
+  #   profile: %Profile{...},
+  #   user: %User{...}
   # }
   ```
 
   If an exception or error occurs during command execution, `SeedFactory` raises `SeedFactory.ExecError`
-  with structured metadata including the execution plan, trails, and current traits at the time of failure.
+  with structured metadata including the execution plan, trails, and current traits at the time of failure:
 
-  The same result can be achieved by passing traits using `produce/2`:
-  ```elixir
-  produce(context, user: [:admin, :active])
   ```
+  ** (SeedFactory.ExecError) unable to execute :create_user command: :email_already_taken
 
-  If you want to specify traits and assign an entity to the context with the different name, then use `:as` option:
-  ```elixir
-  %{active_admin: active_admin} = produce(context, user: [:admin, :active, as: :active_admin])
+  Execution plan:
+    ✔ :create_company
+    ✖ :create_user
+
+  Current traits:
+    %{company: []}
   ```
   """
   alias SeedFactory.Context
@@ -216,17 +252,23 @@ defmodule SeedFactory do
   defdelegate init(context, schema), to: Context
 
   @doc """
-  Changes default behaviour of entities assignment.
+  Creates a scoped context where entities are assigned under different names.
 
-  Modifies a context, so commands engage with entities in the context using provided names.
-  If a command requires/produces/updates/deletes an entity, the provided name will be used instead of the entity name to get value from the context or modify it.
+  Within the callback, all commands that produce, update, delete, or depend on
+  the specified entities will use the remapped names. The rebinding is scoped to
+  the callback — it does not affect the context outside of it.
 
-  It helps to produce the same entity multiple times and assign it to the context with different names.
+  This is useful when you need to produce the same entity multiple times and
+  control how they relate to each other. For simpler cases where you don't need
+  to control relationships, `produce/2` with rebinding is enough:
+
+      context |> produce(company: :company1) |> produce(company: :company2)
 
   ## Example
 
-      # Let's assume that `:product` entity requires `:company` entity.
-      # In this example we create 2 companies, `:product1` will be linked to `:company1`.
+      # :product requires :company. Here we create 2 companies and 1 product.
+      # Inside the first rebind, :company refers to :company1 and :product to :product1,
+      # so the product is linked to company1.
       %{company1: _, company2: _, product1: _} =
         context
         |> rebind([company: :company1, product: :product1], fn context ->
@@ -242,31 +284,65 @@ defmodule SeedFactory do
   defdelegate rebind(context, rebinding, callback), to: Context
 
   @doc """
-  Produces entities if they don't exist in the context.
+  Produces entities with their dependencies resolved automatically.
 
-  The order of specified entities doesn't matter.
-
-  It invokes a series of commands to produce entities with specified traits.
-  If the same entity can be produced by multiple commands, then the first declared command is used by default.
-  In order to produce the entity using the rest of the commands use traits or `exec/3` explicitly.
+  Analyzes the schema to determine which commands need to be executed and in what order.
+  Entities that already exist in the context are reused. The order of specified entities
+  doesn't matter.
 
   ## Examples
 
-      # specify a single entity
+      # produce a single entity (dependencies like :company are created automatically)
       %{user: _} = produce(context, :user)
 
-      # specify a list of entities
+      # produce multiple entities
       %{user: _, company: _} = produce(context, [:user, :company])
 
-      # rebind :user entity as :user1
+      # rebind entity to a different name
       %{user1: _} = produce(context, user: :user1)
 
       # specify traits
       %{user: _} = produce(context, user: [:active, :admin])
+
+      # apply traits incrementally — first create a pending admin, then activate
       %{user: _} = context |> produce(user: [:pending, :admin]) |> produce(user: [:active])
 
-      # specify traits and :as option
+      # combine traits with rebinding using :as option
       %{user1: _} = produce(context, user: [:active, :admin, as: :user1])
+
+  ## Multiple commands producing the same entity
+
+  If the same entity can be produced by multiple commands, the first declared command
+  is used by default. Traits allow you to pick a specific command. For example, given:
+
+      command :create_draft_project do
+        # ...
+        produce :draft_project
+      end
+
+      command :import_draft_project do
+        # ...
+        produce :draft_project
+      end
+
+      trait :created, :draft_project do
+        exec :create_draft_project
+      end
+
+      trait :imported, :draft_project do
+        exec :import_draft_project
+      end
+
+  Then:
+
+      # uses :create_draft_project (first declared) and assigns the :created trait
+      produce(context, :draft_project)
+
+      # equivalent to the above, but explicit
+      produce(context, draft_project: [:created])
+
+      # uses :import_draft_project
+      produce(context, draft_project: [:imported])
   """
   @spec produce(
           context(),
@@ -305,17 +381,29 @@ defmodule SeedFactory do
   end
 
   @doc """
-  Produces dependencies needed for specified entities.
+  Produces all dependencies needed for specified entities, without producing the entities themselves.
 
-  See `pre_exec/3` for problems it solves.
+  Works like `pre_exec/3`, but operates on entities instead of commands. The dependency tree
+  is derived from the commands that would produce the requested entities.
 
-  ## Example
+  When traits are specified, the full command chain is analyzed — including update commands.
+  All their dependencies are created, but the requested entity itself is not.
+  For example, if `:activate_user` updates `:user` and depends on `:team`,
+  then `pre_produce(context, user: [:active])` will create `:team` (and all other
+  dependencies in the chain) without creating the `:user`.
 
-      # pre_produce produces a company and puts it into context,
-      # so produced user1 and user2 will belong to the same company
-      context = pre_produce(context, :user)
-      %{user: user1} = produce(context, :user)
-      %{user: user2} = produce(context, :user)
+  ## Examples
+
+      # Create all dependencies for :article (e.g. :blog, :category, :author)
+      # without creating the article itself
+      context = pre_produce(context, :article)
+
+      %{article: article1} = produce(context, :article)
+      %{article: article2} = produce(context, :article)
+
+  Accepts a list with traits, same as `produce/2`:
+
+      context = pre_produce(context, [:article, user: [:active, :admin]])
   """
   @spec pre_produce(
           context(),
@@ -421,32 +509,39 @@ defmodule SeedFactory do
   end
 
   @doc """
-  Creates dependent entities needed for command execution.
+  Creates all dependent entities needed for a command, without executing the command itself.
 
-  This is useful, when you want to execute the command multiple times reusing input entities.
+  This is useful when you want to execute the same command multiple times with shared dependencies.
+  It is especially handy when a command has many dependencies — `pre_exec` resolves all of them
+  automatically, so you don't have to enumerate them yourself.
 
   ## Example
 
-      # Function :create_user produces multiple entities (:user and :profile), so if you want to
-      # produce multiple users using a sequence of `exec` calls, you have to write this:
-      %{user1: user1, user2: user2} =
-        context
-        |> rebind([user: :user1, profile: :profile1], &exec(&1, :create_user, role: :admin))
-        |> rebind([user: :user2, profile: :profile2], &exec(&1, :create_user, role: :admin))
+  Consider a schema where `:publish_article` depends on `:blog`, `:category`,
+  and `:author` (with trait `:active`):
 
-      # The code above is a bit wordy in a case when all we need are :user entities. We have to write
-      # rebinding for :profile even though we are't interested in it.
+      command :publish_article do
+        param :blog, entity: :blog
+        param :category, entity: :category
+        param :author, entity: :author, with_traits: [:active]
+        param :title, generate: &Faker.Lorem.sentence/0
+        # ...
+        produce :article
+      end
 
-      # A less wordy alternative is:
-      context = produce(context, list_of_all_dependencies_with_their_traits)
-      %{user: user1} = exec(context, :create_user, role: :admin)
-      %{user: user2} = exec(context, :create_user, role: :admin)
+  Without `pre_exec`, you would have to manually set up all the dependencies:
 
-      # However, you have to explicitly enumerate all the dependencies.
-      # It can be more compact with `pre_exec` function:
-      context = pre_exec(context, :create_user)
-      %{user: user1} = exec(context, :create_user, role: :admin)
-      %{user: user2} = exec(context, :create_user, role: :admin)
+      context = produce(context, [:blog, :category, author: [:active]])
+
+      %{article: article1} = exec(context, :publish_article, title: "First")
+      %{article: article2} = exec(context, :publish_article, title: "Second")
+
+  With `pre_exec`, the same is achieved without knowing the dependency tree:
+
+      context = pre_exec(context, :publish_article)
+
+      %{article: article1} = exec(context, :publish_article, title: "First")
+      %{article: article2} = exec(context, :publish_article, title: "Second")
   """
   @spec pre_exec(context(), command_name :: atom(), initial_input :: map() | keyword()) ::
           context()

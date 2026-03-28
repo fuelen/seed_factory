@@ -11,6 +11,7 @@ A toolkit for test data generation.
 
 The main idea of `SeedFactory` is to generate data in tests according to your application business logic (read as context functions if you use [Phoenix Contexts](https://hexdocs.pm/phoenix/contexts.html)) whenever possible and avoid direct inserts to the database (as opposed to `ex_machina`).
 This approach allows you to minimize testing of invalid states as you're not forced to keep complex database structure in your head in order to prepare test data.
+Even in cases where calling business logic functions is impractical (e.g. for performance reasons), SeedFactory serves as a centralized hub for test data creation, ensuring a consistent approach across your test suite.
 Dependent entities are resolved and created automatically, so you can focus on what matters for your test.
 The library is completely agnostic to the database toolkit.
 
@@ -30,11 +31,11 @@ end
 
 ## Overview
 
-This section provides a couple of examples of what the API of the library looks like. For more comprehensive explanations please refer to [docs](https://hexdocs.pm/seed_factory). **README is NOT the primary source of documentation.**
+This section provides a brief overview of the API. For comprehensive explanations please refer to [docs](https://hexdocs.pm/seed_factory).
 
 To use the library, define a schema with commands that describe the processes of your application. When a command is executed it modifies the context by producing/updating/deleting entities.
 
-There is a concept of traits. Think about them as labels which are assigned to produced/updated entities when specific commands with specific arguments are executed.
+Entities can have traits — labels that describe how an entity was created or what state it is in. Traits can build on each other using `from` (e.g. `:active` requires `:pending` first) and can be tied to specific argument values using `args_pattern`.
 
 ### Schema example
 
@@ -66,6 +67,7 @@ defmodule MyApp.SeedFactorySchema do
   end
 
   command :activate_user do
+    # with_traits ensures the user has the :pending trait before activation
     param :user, entity: :user, with_traits: [:pending]
 
     resolve(fn args ->
@@ -77,15 +79,18 @@ defmodule MyApp.SeedFactorySchema do
     update :user
   end
 
+  # :pending is assigned when :create_user is executed
   trait :pending, :user do
     exec :create_user
   end
 
+  # :active requires :pending first — :activate_user replaces :pending with :active
   trait :active, :user do
     from :pending
     exec :activate_user
   end
 
+  # :admin and :normal are determined by the :role argument
   trait :admin, :user do
     exec :create_user, args_pattern: %{role: :admin}
   end
@@ -102,39 +107,38 @@ end
 import SeedFactory
 
 context = %{}
-# Put metadata about the schema to the context with the help of init/2 function
 context = init(context, MyApp.SeedFactorySchema)
 
-# Now, we can execute a command with automatically generated args using exec/2
+# Execute a command with automatically generated args
 %{company: _} = exec(context, :create_company)
 
-# Arguments can be passed explicitly using exec/3
+# Arguments can be passed explicitly
 %{company: _, user: _, profile: _} =
   context
   |> exec(:create_company, name: "GitHub")
   |> exec(:create_user, name: "John Doe")
   |> exec(:activate_user)
 
-# Dependent entities are produced automatically if there is no such entity in the context.
-# In this example, :create_company will be executed implicitly, because :create_user depends on :company
+# Dependencies are resolved automatically — :create_company runs implicitly
 %{company: _, user: _} = exec(context, :create_user)
 
-# If you're fine with generated arguments, then you can use produce/2 to specify
-# desired entities and the chain of corresponding commands will be executed automatically
+# produce/2 executes the full chain of commands for requested entities
 %{company: _company} = produce(context, :company)
 %{user: _user, company: _company} = produce(context, [:company, :user])
 
 # Rebind entities to other names
 %{profile1: _, user1: _} = produce(context, user: :user1, profile: :profile1)
 
-# Specify traits
+# Specify traits — these two are equivalent
 %{user: _user} = produce(context, user: [:admin, :active])
 
-# The command above is an alternative to
 %{user: _user} =
   context
   |> exec(:create_user, role: :admin)
   |> exec(:activate_user)
+
+# Combine traits with rebinding using :as option
+%{active_admin: _} = produce(context, user: [:admin, :active, as: :active_admin])
 ```
 
 Usage with `ExUnit`:
@@ -216,10 +220,18 @@ end
 The context maintains a history of how each entity was created and modified. Useful for debugging:
 
 ```elixir
-ctx = produce(ctx, user: [:pending, :active])
+ctx = produce(ctx, user: [:admin, :active])
 IO.inspect(ctx.__seed_factory_meta__)
 # #SeedFactory.Meta<
-#   current_traits: %{user: [:active, :normal]},
-#   trails: %{user: #trail[create_user: +[:pending, :normal] -> activate_user: +[:active] -[:pending]]}
+#   current_traits: %{company: [], profile: [], user: [:admin, :active]},
+#   trails: %{
+#     company: #trail[:create_company],
+#     profile: #trail[:create_user],
+#     user: #trail[create_user: +[:pending, :admin] -> activate_user: +[:active] -[:pending]]
+#   },
+#   execution_history: [
+#     #execution[produce(user: [:admin, :active]): create_company → create_user → activate_user]
+#   ],
+#   ...
 # >
 ```
