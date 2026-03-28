@@ -173,8 +173,7 @@ defmodule SeedFactory.Requirements.Restrictions do
       |> Enum.flat_map(&elem(&1, 1))
       |> Enum.flat_map(& &1.to)
 
-    acc = acc ++ subsequent_trait_names
-    scan_subsequent_traits(subsequent_trait_names, traits_by_name, acc)
+    scan_subsequent_traits(subsequent_trait_names, traits_by_name, subsequent_trait_names ++ acc)
   end
 
   defp ensure_current_trait_names_do_not_conflict_with_required_trait_names!(
