@@ -18,13 +18,20 @@ defmodule SeedFactory.Transformers.IndexTraits do
       |> Enum.filter(&is_struct(&1, SeedFactory.Trait))
       |> Enum.group_by(& &1.entity)
 
+    trait_name_to_entity =
+      traits_by_entity
+      |> Enum.flat_map(fn {owner_entity, entity_traits} ->
+        Enum.map(entity_traits, fn trait -> {trait.name, owner_entity} end)
+      end)
+      |> Map.new()
+
     traits =
       traits_by_entity
       |> Map.new(fn {entity, traits} ->
         ensure_known_entity(entity, hd(traits), dsl_state)
         ensure_unique_names(traits, entity)
         ensure_traits_have_valid_commands(entity, traits, dsl_state)
-        ensure_valid_from_references(entity, traits, traits_by_entity)
+        ensure_valid_from_references(entity, traits, trait_name_to_entity)
         ensure_no_circular_dependencies(entity, traits)
         traits = populate_to_field(traits)
 
@@ -204,15 +211,8 @@ defmodule SeedFactory.Transformers.IndexTraits do
     |> Enum.join(" -> ")
   end
 
-  defp ensure_valid_from_references(entity, traits, traits_by_entity) do
+  defp ensure_valid_from_references(entity, traits, trait_name_to_entity) do
     trait_names_for_entity = MapSet.new(traits, & &1.name)
-
-    trait_name_to_entity =
-      traits_by_entity
-      |> Enum.flat_map(fn {owner_entity, entity_traits} ->
-        Enum.map(entity_traits, fn trait -> {trait.name, owner_entity} end)
-      end)
-      |> Map.new()
 
     Enum.each(traits, fn trait ->
       validate_from_references(trait, entity, trait_names_for_entity, trait_name_to_entity)

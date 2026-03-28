@@ -2,9 +2,6 @@ defmodule SeedFactory.Transformers.VerifyDependencies do
   @moduledoc false
   use Spark.Dsl.Transformer
 
-  # TODO: migrate to libgraph once this issue is solved
-  # https://github.com/bitwalker/libgraph/issues/56
-
   def after?(module) do
     module in [
       SeedFactory.Transformers.IndexCommands,
