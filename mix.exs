@@ -49,7 +49,6 @@ defmodule SeedFactory.MixProject do
   defp deps do
     [
       {:spark, "~> 2.3"},
-      {:libgraph, "~> 0.16"},
       {:excoveralls, "~> 0.10", only: :test},
       {:ex_doc, "~> 0.27", only: :dev, runtime: false}
     ]

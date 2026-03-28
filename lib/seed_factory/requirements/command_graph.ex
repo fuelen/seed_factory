@@ -358,22 +358,40 @@ defmodule SeedFactory.Requirements.CommandGraph do
   end
 
   def topologically_sorted_nodes(graph) do
-    graph.nodes
-    |> Enum.reduce(Graph.new(), fn {node_name, %{required_by: required_by}}, g ->
-      Enum.reduce(required_by, g, fn {dependent_node, _traits}, g ->
-        Graph.add_edge(g, node_name, dependent_node)
+    nodes = graph.nodes
+
+    in_counts =
+      Map.new(nodes, fn {name, node} ->
+        count = Enum.count(node.requires, &Map.has_key?(nodes, &1))
+        {name, count}
       end)
-    end)
-    |> Graph.topsort()
-    |> Enum.flat_map(fn node_name ->
-      # node should not be executed if it can be found in `required_by` field but not in `graph.nodes` by key.
-      # it can't be found if it is nil (top level required_by value - represents root of the graph)
-      # or if it was removed in `pre_exec` by `delete_explicitly_requested_nodes`
-      case graph.nodes[node_name] do
-        nil -> []
-        node -> [node]
-      end
-    end)
+
+    queue = for {name, 0} <- in_counts, do: name
+
+    do_topsort(queue, [], nodes, in_counts)
+  end
+
+  defp do_topsort([], acc, _nodes, _in_counts), do: Enum.reverse(acc)
+
+  defp do_topsort([name | rest], acc, nodes, in_counts) do
+    node = Map.fetch!(nodes, name)
+
+    {new_ready, in_counts} =
+      Enum.flat_map_reduce(node.required_by, in_counts, fn
+        {nil, _}, counts ->
+          {[], counts}
+
+        {dep, _}, counts ->
+          if Map.has_key?(nodes, dep) do
+            new_count = counts[dep] - 1
+            counts = Map.put(counts, dep, new_count)
+            if new_count == 0, do: {[dep], counts}, else: {[], counts}
+          else
+            {[], counts}
+          end
+      end)
+
+    do_topsort(rest ++ new_ready, [node | acc], nodes, in_counts)
   end
 
   def deprioritize_nodes_that_delete_entities_or_remove_traits(graph, context) do
