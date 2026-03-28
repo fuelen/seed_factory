@@ -1,20 +1,20 @@
 defmodule SeedFactory.Schema do
   @moduledoc """
-  A schema describes how commands modify context
+  A DSL for defining schemas that describe how commands modify context.
 
-  This module provides a DSL for defining schemas that describe how entities should be
-  created, updated, or deleted within a context using the `SeedFactory` library.
-
-  In order to use the DSL, create a schema module with the following content:
+  To use the DSL, create a schema module:
 
       defmodule MyApp.SeedFactorySchema do
         use SeedFactory.Schema
       end
 
-  ## Command Definition
+  ## Commands
 
-  Command is the first thing that should be defined in the schema.
-  To define a command, use the `command` macro followed by the command name. Inside the command block,
+  Commands are the central building block of a schema — they define how entities
+  are created, updated, and deleted. Entities and traits don't exist on their own;
+  they are always a result of executing a command.
+
+  Use the `command` macro to define a command. Inside the command block,
   you can define input parameters, a resolution, and produce, update, and delete directives.
 
   ```elixir
@@ -25,93 +25,107 @@ defmodule SeedFactory.Schema do
 
   ## Parameters
 
-  Parameters define the inputs required for the command's resolver function and how default values should be generated.
-  Parameter can be defined using the `param` macro and can have an arbitrary level of nesting.
+  Parameters define the inputs for the command's resolver function and how default values should be generated.
+  Parameters can be defined using the `param` macro and can have an arbitrary level of nesting.
 
   ### Options
 
   * `:value` - a static default value. Applied by default as `value: nil`.
-  * `:generate` - an anonymous function that generates data.
-  * `:entity` - refers to an entity within the context.
-  * `:with_traits` - a list of atoms with trait names. Can be applied only if `:entity` option is present.
-    This option is used only for automatic dependency resolution - when the entity doesn't exist in the context,
-    SeedFactory will produce it with the specified traits. If you explicitly pass the entity as a parameter,
-    the traits are not validated.
-  * `:map` - an anonymous function that allows mapping an entity to another value. Can be applied only if `:entity` option is present.
+  * `:generate` - a zero-arity function that generates data.
+  * `:entity` - refers to an entity within the context. If the entity is not in the context,
+    SeedFactory will automatically execute a command that produces it.
+  * `:with_traits` - a list of trait names. Requires `:entity` option.
+    When the entity doesn't exist in the context, SeedFactory will produce it with the specified traits.
+
+    > #### Note {: .info}
+    > `:with_traits` is only used for automatic dependency resolution. If you explicitly pass
+    > the entity as a parameter via `exec/3`, the traits are not validated.
+
+  * `:map` - a function that maps the entity to another value. Requires `:entity` option.
 
   ```elixir
-  param :address do
-    param :city, value: "Lemberg"
-    param :street, generate: &random_street/0
+  command :create_employee do
+    param :address do
+      param :city, value: "Lemberg"
+      param :street, generate: &random_street/0
+    end
+
+    param :paid_by, entity: :user, with_traits: [:active]
+    param :office_id, entity: :office, map: & &1.id
+
+    param :github_username
+    # the line above is equivalent to
+    # param :github_username, value: nil
+
+    # resolve, produce, etc.
   end
-
-  param :paid_by, entity: :user, with_traits: [:active]
-  param :office_id, entity: :office, map: & &1.id
-
-  param :github_username
-  # the line above is equivalent to
-  # param :github_username, value: nil
   ```
 
   ## Resolution
 
-  The resolution defines the logic to be executed when the command is invoked. It is implemented as a resolver function inside the `resolve` macro.
-  The resolver function is an anonymous function that takes `args` as its parameter.
-
-  It should return `{:ok, map}`, where map keys are atoms and values represent entities.
-  The atom keys will be used by the `:from` option in `produce` and `update` directives.
-
-  `{:error, reason}` will abort the command execution by raising an exception.
+  The `resolve` macro defines the logic executed when the command is invoked.
+  The resolver is a function that takes `args` and must return either:
+  * `{:ok, map}` — where keys are atoms used by `:from` option in `produce` and `update` directives
+  * `{:error, reason}` — aborts execution by raising `SeedFactory.ExecError`
 
   ```elixir
-  resolve(fn args ->
-    user = MyApp.insert_user!(args)
-    {:ok, %{user: user}}
-  end)
+  command :create_user do
+    param :name, generate: &Faker.Person.name/0
+    param :email, generate: &Faker.Internet.email/0
+
+    resolve(fn args ->
+      user = MyApp.insert_user!(args)
+      {:ok, %{user: user}}
+    end)
+
+    produce :user
+  end
   ```
 
   ## Producing Entities
 
-  The `produce` directive specifies that the command will put a new entity to the context. It takes two arguments: the name of the entity being produced and options.
+  The `produce` directive specifies that the command will put a new entity to the context.
 
   ### Options
 
-  * `:from` - an atom that specifies the key of the map returned by the resolver. Defaults to specified entity name (first argument)
+  * `:from` - an atom that specifies the key of the map returned by the resolver. Defaults to the entity name.
 
   ```elixir
-  produce :entity_name, from: :source_key
-  ```
+  command :register_user do
+    param :name, generate: &Faker.Person.name/0
+    param :company, entity: :company
 
-  ```elixir
-  resolve(fn args ->
-    {user, profile} = MyApp.register_user!(args)
-    {:ok, %{user: user, profile: profile}}
-  end)
+    resolve(fn args ->
+      {user, profile} = MyApp.register_user!(args)
+      {:ok, %{user: user, profile: profile}}
+    end)
 
-  produce :user
-  produce :user_profile, from: :profile
+    produce :user
+    produce :user_profile, from: :profile
+  end
   ```
 
   ## Updating Entities
 
-  The `update` directive modifies an existing entity within the context. It takes two arguments: the name of the entity being updated and options.
+  The `update` directive modifies an existing entity within the context.
 
   ### Options
 
-  * `:from` - an atom that specifies the key of the map returned by the resolver. Defaults to specified entity name (first argument)
+  * `:from` - an atom that specifies the key of the map returned by the resolver. Defaults to the entity name.
 
   ```elixir
-  update :entity_name, from: :source_key
-  ```
+  command :update_user do
+    param :user, entity: :user
+    param :profile, entity: :user_profile
 
-  ```elixir
-  resolve(fn args ->
-    {user, profile} = MyApp.update_user!(args)
-    {:ok, %{user: user, profile: profile}}
-  end)
+    resolve(fn args ->
+      {user, profile} = MyApp.update_user!(args.user, args.profile)
+      {:ok, %{user: user, profile: profile}}
+    end)
 
-  update :user
-  update :user_profile, from: :profile
+    update :user
+    update :user_profile, from: :profile
+  end
   ```
 
   ## Deleting Entities
@@ -119,27 +133,30 @@ defmodule SeedFactory.Schema do
   The `delete` directive removes an entity from the context.
 
   ```elixir
-  resolve(fn args ->
-    MyApp.delete_user!(args.user_id)
-    {:ok, %{}}
-  end)
+  command :delete_user do
+    param :user, entity: :user
 
-  delete :user
+    resolve(fn args ->
+      MyApp.delete_user!(args.user)
+      {:ok, %{}}
+    end)
+
+    delete :user
+  end
   ```
 
   ## Traits
 
   The `trait` directive declares a trait for an entity.
-  The first argument is trait name, the second is entity name.
+  The first argument is the trait name, the second is the entity name.
 
-  A trait must contain an `exec` directive with the name of the command. Execution of the specified command marks
-  entity with the trait.
+  A trait must contain an `exec` directive with the name of the command.
+  Executing that command marks the entity with the trait.
 
   ### Options
 
-  * `:from` - an atom or a list of atoms that point to the traits that should be replaced with the new one. This is useful for different kinds of
-  status transitions.
-
+  * `:from` - an atom or a list of atoms specifying which traits are replaced by this one.
+  When a list is given, any of the listed traits will be replaced. This is useful for status transitions.
 
   ```elixir
   trait :pending, :user do
@@ -151,6 +168,7 @@ defmodule SeedFactory.Schema do
     exec :activate_user
   end
 
+  # :suspended can replace either :pending or :active
   trait :suspended, :user do
     from [:pending, :active]
     exec :suspend_user
@@ -206,17 +224,17 @@ defmodule SeedFactory.Schema do
 
   ## Exec step
 
-  The `exec` directive is required when declaring a trait and is used for specifying what should be executed in order
-  to mark entity with the trait
+  The `exec` directive inside a trait specifies which command must be executed
+  to mark the entity with the trait.
 
   ### Options
 
-  * `:args_match` - a function which accepts command args and must return a boolean. Must be used with `:generate_args` option.
-  If the function returns `true`, then the entity will be marked with the trait.
-  * `:generate_args` - a function which generates a map with args. Must be used with `:args_match` option. The function generates args which satisfy
-  validation in `:args_match` option and is used when the entity is requested with the trait.
-  * `:args_pattern` - a map with args. This option is less verbose (and limited in functionality) alternative to the combination of `:args_match` and `:generate_args` options.
-  If specified, then entity will be marked with the trait only when command args match the pattern. Also, the pattern will be used as a replacement to `:generate_args` invocation.
+  * `:args_pattern` - a map with args. If the command args match the pattern, the entity is marked with the trait.
+  The pattern is also used to generate args when the entity is requested with this trait.
+  * `:args_match` - a function that accepts command args and returns a boolean. Must be used with `:generate_args`.
+  * `:generate_args` - a function that generates a map with args satisfying `:args_match`. Must be used with `:args_match`.
+
+  `:args_pattern` is a simpler alternative to the `:args_match` + `:generate_args` combination.
 
   ```elixir
   # all three instructions below are equal
@@ -276,6 +294,59 @@ defmodule SeedFactory.Schema do
     end
   end
   ```
+
+  ## Splitting large schemas with fragments
+
+  SeedFactory uses [Spark](https://hexdocs.pm/spark) for its DSL. Spark provides a mechanism
+  called `Spark.Dsl.Fragment` that allows splitting a large DSL module into multiple files.
+
+  When a schema grows large, you can extract groups of related commands and traits into fragments.
+  Each fragment can contain commands and traits, and they are merged into the main schema at compile time.
+
+  ```elixir
+  defmodule MyApp.SeedFactorySchema.UserCommands do
+    use Spark.Dsl.Fragment,
+      of: SeedFactory.Schema
+
+    command :create_user do
+      param :name, generate: &Faker.Person.name/0
+      param :role, value: :normal
+
+      resolve(fn args -> MyApp.Users.create_user(args) end)
+
+      produce :user
+    end
+
+    command :activate_user do
+      param :user, entity: :user, with_traits: [:pending]
+
+      resolve(fn args ->
+        {:ok, %{user: MyApp.Users.activate_user!(args.user)}}
+      end)
+
+      update :user
+    end
+
+    trait :pending, :user do
+      exec :create_user
+    end
+
+    trait :active, :user do
+      from :pending
+      exec :activate_user
+    end
+  end
+
+  defmodule MyApp.SeedFactorySchema do
+    use SeedFactory.Schema,
+      fragments: [MyApp.SeedFactorySchema.UserCommands]
+
+    # other commands go here
+  end
+  ```
+
+  Fragments can reference entities from other fragments or from the main schema —
+  dependency resolution works across all of them.
 
   ## Include schemas
 
