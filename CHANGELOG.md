@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.8.0 (unreleased)
+## v0.8.0 (2026-03-29)
 
 ### Features
 
@@ -12,6 +12,16 @@
 ### Breaking Changes
 
 - Resolver `{:error, error}` now raises `SeedFactory.ExecError` instead of `RuntimeError`
+
+### Performance
+
+- Replace `libgraph` dependency with inline topological sort
+- Optimize compile-time trait indexing
+- Fix quadratic list accumulation in `scan_subsequent_traits`
+
+### Improvements
+
+- Improved documentation for core functions, `SeedFactory.Schema`, and `SeedFactory.Test` modules
 
 ## v0.7.1 (2026-03-26)
 
