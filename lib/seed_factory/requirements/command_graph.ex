@@ -451,7 +451,11 @@ defmodule SeedFactory.Requirements.CommandGraph do
         {name, count}
       end)
 
-    queue = for {name, 0} <- in_counts, do: name
+    queue =
+      Enum.reduce(in_counts, :queue.new(), fn
+        {name, 0}, queue -> :queue.in(name, queue)
+        _, queue -> queue
+      end)
 
     sorted_nodes = do_topsort(queue, [], nodes, in_counts)
 
@@ -464,27 +468,31 @@ defmodule SeedFactory.Requirements.CommandGraph do
     sorted_nodes
   end
 
-  defp do_topsort([], acc, _nodes, _in_counts), do: Enum.reverse(acc)
+  defp do_topsort(queue, acc, nodes, in_counts) do
+    case :queue.out(queue) do
+      {:empty, _} ->
+        Enum.reverse(acc)
 
-  defp do_topsort([name | rest], acc, nodes, in_counts) do
-    node = Map.fetch!(nodes, name)
+      {{:value, name}, queue} ->
+        node = Map.fetch!(nodes, name)
 
-    {new_ready, in_counts} =
-      Enum.flat_map_reduce(node.required_by, in_counts, fn
-        {nil, _}, counts ->
-          {[], counts}
+        {queue, in_counts} =
+          Enum.reduce(node.required_by, {queue, in_counts}, fn
+            {nil, _}, acc ->
+              acc
 
-        {dep, _}, counts ->
-          if Map.has_key?(nodes, dep) do
-            new_count = counts[dep] - 1
-            counts = Map.put(counts, dep, new_count)
-            if new_count == 0, do: {[dep], counts}, else: {[], counts}
-          else
-            {[], counts}
-          end
-      end)
+            {dep, _}, {queue, counts} ->
+              if Map.has_key?(nodes, dep) do
+                new_count = counts[dep] - 1
+                counts = Map.put(counts, dep, new_count)
+                if new_count == 0, do: {:queue.in(dep, queue), counts}, else: {queue, counts}
+              else
+                {queue, counts}
+              end
+          end)
 
-    do_topsort(rest ++ new_ready, [node | acc], nodes, in_counts)
+        do_topsort(queue, [node | acc], nodes, in_counts)
+    end
   end
 
   # Conflict resolution can remove the producer a node was linked to while another
