@@ -85,7 +85,8 @@ defmodule SeedFactory.SchemaTest do
     contract: [:sign_contract, :import_contract],
     contract_copy: [:sign_contract, :import_contract],
     notary: [:appoint_notary],
-    approval: [:approve_contract]
+    approval: [:approve_contract],
+    ticket: [:open_ticket, :import_ticket]
   }
 
   test "SchemaExampleExtended - persisted data" do
@@ -1502,6 +1503,78 @@ defmodule SeedFactory.SchemaTest do
         ],
         deleting_instructions: [],
         required_entities: %{contract: MapSet.new([])}
+      },
+      open_ticket: %SeedFactory.Command{
+        name: :open_ticket,
+        params: %{},
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :ticket, from: :ticket}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{}
+      },
+      import_ticket: %SeedFactory.Command{
+        name: :import_ticket,
+        params: %{
+          status: %SeedFactory.Parameter{
+            name: :status,
+            type: :value,
+            value: :open,
+            map: nil,
+            generate: nil,
+            params: %{},
+            entity: nil,
+            with_traits: nil
+          },
+          external_id: %SeedFactory.Parameter{
+            name: :external_id,
+            type: :value,
+            value: "ext",
+            map: nil,
+            generate: nil,
+            params: %{},
+            entity: nil,
+            with_traits: nil
+          }
+        },
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :ticket, from: :ticket}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{}
+      },
+      close_ticket: %SeedFactory.Command{
+        name: :close_ticket,
+        params: %{
+          ticket: %SeedFactory.Parameter{
+            name: :ticket,
+            type: :entity,
+            value: nil,
+            map: nil,
+            generate: nil,
+            params: %{},
+            entity: :ticket,
+            with_traits: nil
+          },
+          reason: %SeedFactory.Parameter{
+            name: :reason,
+            type: :value,
+            value: :manual,
+            map: nil,
+            generate: nil,
+            params: %{},
+            entity: nil,
+            with_traits: nil
+          }
+        },
+        producing_instructions: [],
+        updating_instructions: [
+          %SeedFactory.UpdatingInstruction{entity: :ticket, from: :ticket}
+        ],
+        deleting_instructions: [],
+        required_entities: %{ticket: MapSet.new([])}
       }
     }
 

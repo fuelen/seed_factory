@@ -38,6 +38,8 @@ defmodule SeedFactory.Requirements.CommandGraph do
       nil ->
         case analyze_conflict_group(graph, command_names) do
           :new_group ->
+            grouped_traits = Enum.group_by(traits, & &1.exec_step.command_name)
+
             graph =
               command_names
               |> Enum.reduce(graph, fn command_name, graph ->
@@ -45,7 +47,7 @@ defmodule SeedFactory.Requirements.CommandGraph do
                   graph,
                   command_name,
                   required_by,
-                  traits,
+                  Map.get(grouped_traits, command_name, []),
                   :in_conflict_group
                 )
               end)
@@ -78,6 +80,7 @@ defmodule SeedFactory.Requirements.CommandGraph do
         end
 
       command_name ->
+        traits = Enum.filter(traits, &(&1.exec_step.command_name == command_name))
         graph = link_nodes(graph, command_name, required_by, traits)
         {graph, MapSet.new()}
     end

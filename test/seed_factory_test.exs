@@ -1527,6 +1527,23 @@ defmodule SeedFactoryTest do
     end
   end
 
+  describe "trait declared on several commands" do
+    test "produce applies only the args of the declaration whose command runs", context do
+      context = produce(context, ticket: [:closed])
+
+      assert context.ticket == %{status: :closed, source: :web, external_id: nil}
+      assert_trait(context, :ticket, [:closed])
+    end
+
+    test "produce with a trait that forces another command uses that declaration's args",
+         context do
+      context = produce(context, ticket: [:imported, :closed])
+
+      assert context.ticket == %{status: :closed, source: :import, external_id: "ext"}
+      assert_trait(context, :ticket, [:imported, :closed])
+    end
+  end
+
   describe "trait resolution order" do
     test "produce(user: [:active, :admin]) gives same result as produce(user: [:admin, :active])",
          context do

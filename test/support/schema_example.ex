@@ -997,4 +997,52 @@ defmodule SchemaExample do
   trait :notarized, :contract do
     exec :notarize_contract
   end
+
+  # Commands for tests where one trait name is declared on several commands.
+  # :closed is reachable by closing an open ticket and by an import that
+  # creates the ticket already closed.
+  command :open_ticket do
+    resolve(fn _ ->
+      {:ok, %{ticket: %{status: :open, source: :web, external_id: nil}}}
+    end)
+
+    produce :ticket
+  end
+
+  command :import_ticket do
+    param :status, value: :open
+    param :external_id, value: "ext"
+
+    resolve(fn args ->
+      {:ok, %{ticket: %{status: args.status, source: :import, external_id: args.external_id}}}
+    end)
+
+    produce :ticket
+  end
+
+  command :close_ticket do
+    param :ticket, entity: :ticket
+    param :reason, value: :manual
+
+    resolve(fn args ->
+      {:ok, %{ticket: %{args.ticket | status: :closed}}}
+    end)
+
+    update :ticket
+  end
+
+  trait :imported, :ticket do
+    exec :import_ticket
+  end
+
+  trait :closed, :ticket do
+    exec :close_ticket, args_pattern: %{reason: :closing}
+  end
+
+  trait :closed, :ticket do
+    exec :import_ticket do
+      args_match(fn args -> args.status == :closed end)
+      generate_args(fn -> %{status: :closed} end)
+    end
+  end
 end
