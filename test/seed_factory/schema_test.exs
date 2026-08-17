@@ -81,7 +81,11 @@ defmodule SeedFactory.SchemaTest do
     launch_announcement: [:publish_launch_announcement],
     project_quota: [:configure_project_quota],
     widget: [:create_widget, :create_widget_and_bundle],
-    widget_bundle: [:create_widget_and_bundle, :create_widget_bundle_only]
+    widget_bundle: [:create_widget_and_bundle, :create_widget_bundle_only],
+    contract: [:sign_contract, :import_contract],
+    contract_copy: [:sign_contract, :import_contract],
+    notary: [:appoint_notary],
+    approval: [:approve_contract]
   }
 
   test "SchemaExampleExtended - persisted data" do
@@ -1391,6 +1395,113 @@ defmodule SeedFactory.SchemaTest do
         updating_instructions: [],
         deleting_instructions: [],
         required_entities: %{}
+      },
+      sign_contract: %SeedFactory.Command{
+        name: :sign_contract,
+        params: %{},
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :contract, from: :contract},
+          %SeedFactory.ProducingInstruction{entity: :contract_copy, from: :copy}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{}
+      },
+      import_contract: %SeedFactory.Command{
+        name: :import_contract,
+        params: %{},
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :contract, from: :contract},
+          %SeedFactory.ProducingInstruction{entity: :contract_copy, from: :copy}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{}
+      },
+      appoint_notary: %SeedFactory.Command{
+        name: :appoint_notary,
+        params: %{},
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :notary, from: :notary}
+        ],
+        updating_instructions: [],
+        deleting_instructions: [],
+        required_entities: %{}
+      },
+      approve_contract: %SeedFactory.Command{
+        name: :approve_contract,
+        params: %{
+          contract: %SeedFactory.Parameter{
+            name: :contract,
+            type: :entity,
+            value: nil,
+            map: nil,
+            generate: nil,
+            params: %{},
+            entity: :contract,
+            with_traits: nil
+          },
+          notary: %SeedFactory.Parameter{
+            name: :notary,
+            type: :entity,
+            value: nil,
+            map: nil,
+            generate: nil,
+            params: %{},
+            entity: :notary,
+            with_traits: nil
+          }
+        },
+        producing_instructions: [
+          %SeedFactory.ProducingInstruction{entity: :approval, from: :approval}
+        ],
+        updating_instructions: [
+          %SeedFactory.UpdatingInstruction{entity: :contract, from: :contract}
+        ],
+        deleting_instructions: [],
+        required_entities: %{contract: MapSet.new([]), notary: MapSet.new([])}
+      },
+      extend_contract: %SeedFactory.Command{
+        name: :extend_contract,
+        params: %{
+          contract: %SeedFactory.Parameter{
+            name: :contract,
+            type: :entity,
+            value: nil,
+            map: nil,
+            generate: nil,
+            params: %{},
+            entity: :contract,
+            with_traits: nil
+          }
+        },
+        producing_instructions: [],
+        updating_instructions: [
+          %SeedFactory.UpdatingInstruction{entity: :contract, from: :contract}
+        ],
+        deleting_instructions: [],
+        required_entities: %{contract: MapSet.new([])}
+      },
+      notarize_contract: %SeedFactory.Command{
+        name: :notarize_contract,
+        params: %{
+          contract: %SeedFactory.Parameter{
+            name: :contract,
+            type: :entity,
+            value: nil,
+            map: nil,
+            generate: nil,
+            params: %{},
+            entity: :contract,
+            with_traits: nil
+          }
+        },
+        producing_instructions: [],
+        updating_instructions: [
+          %SeedFactory.UpdatingInstruction{entity: :contract, from: :contract}
+        ],
+        deleting_instructions: [],
+        required_entities: %{contract: MapSet.new([])}
       }
     }
 

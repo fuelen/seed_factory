@@ -923,4 +923,78 @@ defmodule SchemaExample do
 
     produce :widget_bundle
   end
+
+  # Commands for tests that produce a second instance of an entity via rebinding.
+  # Both producers of :contract also produce :contract_copy, so with an existing
+  # :contract_copy every candidate would duplicate it.
+  command :sign_contract do
+    resolve(fn _ ->
+      {:ok, %{contract: "signed contract", copy: "copy of signed contract"}}
+    end)
+
+    produce :contract
+    produce :contract_copy, from: :copy
+  end
+
+  command :import_contract do
+    resolve(fn _ ->
+      {:ok, %{contract: "imported contract", copy: "copy of imported contract"}}
+    end)
+
+    produce :contract
+    produce :contract_copy, from: :copy
+  end
+
+  command :appoint_notary do
+    resolve(fn _ ->
+      {:ok, %{notary: "notary"}}
+    end)
+
+    produce :notary
+  end
+
+  command :approve_contract do
+    param :contract, entity: :contract
+    param :notary, entity: :notary
+
+    resolve(fn args ->
+      {:ok, %{contract: args.contract <> " (approved)", approval: "approval"}}
+    end)
+
+    update :contract
+    produce :approval
+  end
+
+  command :extend_contract do
+    param :contract, entity: :contract
+
+    resolve(fn args ->
+      {:ok, %{contract: args.contract <> " (extended)"}}
+    end)
+
+    update :contract
+  end
+
+  command :notarize_contract do
+    param :contract, entity: :contract
+
+    resolve(fn args ->
+      {:ok, %{contract: args.contract <> " (notarized)"}}
+    end)
+
+    update :contract
+  end
+
+  trait :approved, :contract do
+    exec :approve_contract
+  end
+
+  trait :extended, :contract do
+    from :approved
+    exec :extend_contract
+  end
+
+  trait :notarized, :contract do
+    exec :notarize_contract
+  end
 end

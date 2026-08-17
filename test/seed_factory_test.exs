@@ -1449,6 +1449,82 @@ defmodule SeedFactoryTest do
       # (which would fail trying to produce already existing :widget)
       assert context.widget_bundle == "standalone bundle"
     end
+
+    test "produce with :as raises EntityAlreadyExistsError until all sibling entities are rebound",
+         context do
+      context = produce(context, contract: [:extended, :notarized])
+
+      assert_trait(context, :contract, [:extended, :notarized])
+
+      error =
+        assert_raise SeedFactory.EntityAlreadyExistsError, fn ->
+          produce(context, contract: [:extended, :notarized, as: :contract2])
+        end
+
+      assert error.entity == :contract_copy
+      assert error.command == :sign_contract
+
+      error =
+        assert_raise SeedFactory.EntityAlreadyExistsError, fn ->
+          produce(context,
+            contract: [:extended, :notarized, as: :contract2],
+            contract_copy: :contract_copy2
+          )
+        end
+
+      assert error.entity == :approval
+      assert error.command == :approve_contract
+
+      context =
+        produce(context,
+          contract: [:extended, :notarized, as: :contract2],
+          contract_copy: :contract_copy2,
+          approval: :approval2
+        )
+
+      # The relative order of :approve_contract and :notarize_contract is not defined.
+      assert context.contract2 =~ "signed contract"
+      assert context.contract2 =~ "(approved)"
+      assert context.contract2 =~ "(notarized)"
+      assert context.contract2 =~ "(extended)"
+      assert context.contract_copy2 == "copy of signed contract"
+      assert context.approval2 == "approval"
+      assert_trait(context, :contract2, [:extended, :notarized])
+    end
+
+    test "produce with rebinding raises EntityAlreadyExistsError when every producing command would duplicate an existing entity",
+         context do
+      context = produce(context, :contract)
+
+      assert context.contract == "signed contract"
+
+      error =
+        assert_raise SeedFactory.EntityAlreadyExistsError, fn ->
+          produce(context, contract: :contract2)
+        end
+
+      assert error.entity == :contract_copy
+      assert error.command == :sign_contract
+    end
+
+    # :notary is rebound without being requested, so :appoint_notary can enter the
+    # plan only through dependency collection of :approve_contract.
+    test "produce plans rebound dependencies of an already-executed command", context do
+      context = produce(context, contract: [:extended])
+
+      error =
+        assert_raise SeedFactory.EntityAlreadyExistsError, fn ->
+          rebind(context, [notary: :notary2], fn context ->
+            produce(context,
+              contract: [:extended, as: :contract2],
+              contract_copy: :contract_copy2
+            )
+          end)
+        end
+
+      assert error.entity == :approval
+      assert error.command == :approve_contract
+    end
   end
 
   describe "trait resolution order" do

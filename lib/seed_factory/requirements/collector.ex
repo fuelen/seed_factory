@@ -385,8 +385,7 @@ defmodule SeedFactory.Requirements.Collector do
         not Map.has_key?(requirements.graph.nodes, command_name)
 
       if added_to_requirements_in_previous_iterations? or
-           removed_from_requirements_in_current_iteration? or
-           anything_was_produced_by_command?(context, command) do
+           removed_from_requirements_in_current_iteration? do
         {:cont, {:ok, requirements}}
       else
         case for_command(requirements, command, %{}, command.name) do
@@ -450,27 +449,13 @@ defmodule SeedFactory.Requirements.Collector do
     end)
   end
 
-  def anything_was_produced_by_command?(context, command) do
-    Enum.any?(command.producing_instructions, fn instruction ->
-      binding_name = SeedFactory.Context.binding_name(context, instruction.entity)
-
-      case SeedFactory.Context.fetch_trail(context, binding_name) do
-        nil ->
-          false
-
-        %{produced_by: {produced_by_command_name, _, _}} ->
-          command.name == produced_by_command_name
-      end
-    end)
-  end
-
   defp reject_commands_that_would_duplicate_entity(command_names, context, target_entity) do
-    case command_names do
-      [_single] ->
+    case Enum.reject(command_names, &command_would_duplicate_entity?(&1, context, target_entity)) do
+      [] ->
         command_names
 
-      multiple ->
-        Enum.reject(multiple, &command_would_duplicate_entity?(&1, context, target_entity))
+      filtered ->
+        filtered
     end
   end
 
