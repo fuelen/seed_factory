@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.8.1 (2026-08-17)
+
+### Bug Fixes
+
+- Fix `FunctionClauseError` when producing a second instance of an entity via rebinding and every producing command would duplicate an existing entity. Now raises `SeedFactory.EntityAlreadyExistsError` naming the entity that must be rebound.
+- Fix missing execution-order edges for commands that are re-executed under rebinding. Could surface as `KeyError` depending on topological sort tie-break.
+- Fix args of a trait declared on several commands leaking into the command that did not declare them. `produce` then failed with "Input doesn't match defined params".
+
 ## v0.8.0 (2026-03-29)
 
 ### Features
