@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.8.2 (2026-08-18)
+
+### Bug Fixes
+
+- Fix trait resolution depending on the order of traits in a `produce` request. A trait declared on a single command now wins conflict resolution regardless of its position in the list, and conflicting trait requests raise `SeedFactory.TraitResolutionError` instead of silently producing the entity through another command.
+- Fix missing execution-order edges after conflict resolution removes a producer another node depended on. Could surface as `KeyError` depending on the topological sort tie-break.
+- Fix `produce` silently returning an incomplete context when the selected commands form a circular dependency. Now raises `SeedFactory.CircularDependencyError` naming the commands.
+- Fix `with_traits` on an entity param being ignored when selecting the producer of an absent dependency while the demanding command was still in unresolved conflict groups. Such a demand now wins conflict resolution once the demanding command settles in the plan, and expires when that command leaves it.
+
 ## v0.8.1 (2026-08-17)
 
 ### Bug Fixes
