@@ -2,6 +2,8 @@ defmodule SeedFactoryTest do
   use ExUnit.Case, async: true
   use SeedFactory.Test, schema: SchemaExample
 
+  import TraitAssertions
+
   test "rebind", context do
     {context, diff} =
       with_diff(context, fn ->
@@ -1361,23 +1363,6 @@ defmodule SeedFactoryTest do
       assert error.message == expected
     end
 
-    # Regression test for :is_subset conflict resolution bug.
-    # See SchemaExample for the test schema (Award, Nomination, Prize, Ceremony).
-    #
-    # Flow when requesting prize:
-    # 1. prize conflict [direct_award, earn_prize] registered
-    # 2. direct_award requires ceremony -> ceremony requires award
-    # 3. award conflict [grant_award, nominate_award, direct_award] registered
-    # 4. earn_prize requires nomination
-    # 5. nomination conflict [grant_award, nominate_award] - SUBSET of award!
-    # 6. diff = [direct_award], but it's in prize AND award groups
-    #
-    # Bug: direct_award was removed despite being in 2 conflict groups
-    test "is_subset conflict resolution preserves commands needed by other branches", context do
-      context = produce(context, [:prize])
-      assert context.prize
-    end
-
     # Regression test: trait transitions must execute in correct order.
     # When producing an entity with a trait that requires multiple transitions
     # (e.g., todo -> in_progress -> in_review), the commands must execute
@@ -1402,146 +1387,6 @@ defmodule SeedFactoryTest do
 
       assert context3.task.status == :completed
     end
-
-    # Regression test for trait mismatch in conflict groups.
-    # When a command in a conflict group requires a trait that cannot be satisfied
-    # (because the entity was already created without that trait), the system should
-    # remove that command from the conflict group instead of raising an exception.
-    #
-    # Scenario:
-    # 1. create_pending_user produces :user and :profile (without :contacts_confirmed trait)
-    # 2. create_document_for_verified_profile requires :profile with :contacts_confirmed trait
-    # 3. create_document doesn't have this requirement
-    # 4. When profile already exists without :contacts_confirmed and we need :document,
-    #    the system should automatically choose create_document instead of failing
-    test "removes command from conflict group when trait cannot be satisfied", context do
-      context =
-        context
-        |> produce(:profile)
-        |> produce(:document)
-
-      assert context.document
-      assert context.profile.contacts_confirmed? == false
-      assert context.document.verified_profile? == false
-    end
-
-    # Regression test: conflict group resolution must consider existing entities.
-    # When an entity already exists, commands that would produce it again must be
-    # excluded from conflict resolution.
-    #
-    # Scenario with overlapping commands:
-    # - create_widget_and_bundle produces both :widget and :widget_bundle
-    # - create_widget_bundle_only produces only :widget_bundle
-    #
-    # When :widget exists (via create_widget), producing :widget_bundle
-    # should use create_widget_bundle_only, not create_widget_and_bundle
-    # (which would fail on existing :widget).
-    test "excludes commands from conflict group when they would produce existing entities",
-         context do
-      context = produce(context, :widget)
-
-      # Verify widget exists before producing widget_bundle
-      assert context.widget == "widget"
-
-      context = produce(context, :widget_bundle)
-
-      # Must use create_widget_bundle_only, not create_widget_and_bundle
-      # (which would fail trying to produce already existing :widget)
-      assert context.widget_bundle == "standalone bundle"
-    end
-
-    test "produce with :as raises EntityAlreadyExistsError until all sibling entities are rebound",
-         context do
-      context = produce(context, contract: [:extended, :notarized])
-
-      assert_trait(context, :contract, [:extended, :notarized])
-
-      error =
-        assert_raise SeedFactory.EntityAlreadyExistsError, fn ->
-          produce(context, contract: [:extended, :notarized, as: :contract2])
-        end
-
-      assert error.entity == :contract_copy
-      assert error.command == :sign_contract
-
-      error =
-        assert_raise SeedFactory.EntityAlreadyExistsError, fn ->
-          produce(context,
-            contract: [:extended, :notarized, as: :contract2],
-            contract_copy: :contract_copy2
-          )
-        end
-
-      assert error.entity == :approval
-      assert error.command == :approve_contract
-
-      context =
-        produce(context,
-          contract: [:extended, :notarized, as: :contract2],
-          contract_copy: :contract_copy2,
-          approval: :approval2
-        )
-
-      # The relative order of :approve_contract and :notarize_contract is not defined.
-      assert context.contract2 =~ "signed contract"
-      assert context.contract2 =~ "(approved)"
-      assert context.contract2 =~ "(notarized)"
-      assert context.contract2 =~ "(extended)"
-      assert context.contract_copy2 == "copy of signed contract"
-      assert context.approval2 == "approval"
-      assert_trait(context, :contract2, [:extended, :notarized])
-    end
-
-    test "produce with rebinding raises EntityAlreadyExistsError when every producing command would duplicate an existing entity",
-         context do
-      context = produce(context, :contract)
-
-      assert context.contract == "signed contract"
-
-      error =
-        assert_raise SeedFactory.EntityAlreadyExistsError, fn ->
-          produce(context, contract: :contract2)
-        end
-
-      assert error.entity == :contract_copy
-      assert error.command == :sign_contract
-    end
-
-    # :notary is rebound without being requested, so :appoint_notary can enter the
-    # plan only through dependency collection of :approve_contract.
-    test "produce plans rebound dependencies of an already-executed command", context do
-      context = produce(context, contract: [:extended])
-
-      error =
-        assert_raise SeedFactory.EntityAlreadyExistsError, fn ->
-          rebind(context, [notary: :notary2], fn context ->
-            produce(context,
-              contract: [:extended, as: :contract2],
-              contract_copy: :contract_copy2
-            )
-          end)
-        end
-
-      assert error.entity == :approval
-      assert error.command == :approve_contract
-    end
-  end
-
-  describe "trait declared on several commands" do
-    test "produce applies only the args of the declaration whose command runs", context do
-      context = produce(context, ticket: [:closed])
-
-      assert context.ticket == %{status: :closed, source: :web, external_id: nil}
-      assert_trait(context, :ticket, [:closed])
-    end
-
-    test "produce with a trait that forces another command uses that declaration's args",
-         context do
-      context = produce(context, ticket: [:imported, :closed])
-
-      assert context.ticket == %{status: :closed, source: :import, external_id: "ext"}
-      assert_trait(context, :ticket, [:imported, :closed])
-    end
   end
 
   describe "trait resolution order" do
@@ -1555,19 +1400,6 @@ defmodule SeedFactoryTest do
 
       assert context1.user.role == context2.user.role
     end
-  end
-
-  defp assert_trait(context, binding_name, expected_traits) when is_list(expected_traits) do
-    assert Map.has_key?(context, binding_name),
-           "No produced entity bound to #{inspect(binding_name)}"
-
-    current_traits =
-      Map.get(context.__seed_factory_meta__.current_traits, binding_name) ||
-        raise "No tracked traits for #{inspect(binding_name)}"
-
-    assert Enum.sort(expected_traits) == Enum.sort(current_traits)
-
-    context
   end
 
   def with_diff(context, callback) do
