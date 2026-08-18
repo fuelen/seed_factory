@@ -322,17 +322,13 @@ defmodule SeedFactory.Requirements.CommandGraph do
   defp ensure_deferred_requirements_satisfied!(%__MODULE__{} = graph) do
     Enum.each(graph.deferred_resolutions, fn deferred ->
       if not Map.has_key?(graph.nodes, deferred.node_name) do
-        case deferred.traits do
-          [] ->
-            :noop
+        [trait | _] = deferred.traits
 
-          [trait | _] ->
-            raise SeedFactory.TraitResolutionError,
-              entity: trait.entity,
-              trait: trait.name,
-              required_by: nil,
-              reason: {:commands_rejected, [deferred.node_name]}
-        end
+        raise SeedFactory.TraitResolutionError,
+          entity: trait.entity,
+          trait: trait.name,
+          required_by: nil,
+          reason: {:commands_rejected, [deferred.node_name]}
       end
     end)
 
@@ -434,7 +430,16 @@ defmodule SeedFactory.Requirements.CommandGraph do
 
     queue = for {name, 0} <- in_counts, do: name
 
-    do_topsort(queue, [], nodes, in_counts)
+    sorted_nodes = do_topsort(queue, [], nodes, in_counts)
+
+    if length(sorted_nodes) != map_size(nodes) do
+      commands_in_cycles =
+        Enum.sort(Map.keys(nodes) -- Enum.map(sorted_nodes, & &1.name))
+
+      raise SeedFactory.CircularDependencyError, commands: commands_in_cycles
+    end
+
+    sorted_nodes
   end
 
   defp do_topsort([], acc, _nodes, _in_counts), do: Enum.reverse(acc)

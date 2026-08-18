@@ -427,3 +427,15 @@ defmodule SeedFactory.ExecError do
     "Original exception:\n  #{Exception.format_banner(:error, exception)}"
   end
 end
+
+defmodule SeedFactory.CircularDependencyError do
+  defexception [:message, :commands]
+
+  def exception(opts) when is_list(opts) do
+    commands = Keyword.fetch!(opts, :commands)
+
+    message = "commands have circular dependencies: #{inspect(commands)}"
+
+    %__MODULE__{message: message, commands: commands}
+  end
+end
