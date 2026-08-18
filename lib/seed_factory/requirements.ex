@@ -23,6 +23,7 @@ defmodule SeedFactory.Requirements do
 
     sorted_nodes =
       graph
+      |> CommandGraph.link_producers_of_required_entities(context)
       |> CommandGraph.deprioritize_nodes_that_delete_entities_or_remove_traits(context)
       |> CommandGraph.topologically_sorted_nodes()
 

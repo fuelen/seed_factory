@@ -3,7 +3,10 @@ defmodule SeedFactory.Requirements.CommandGraph do
 
   alias SeedFactory.Requirements.CommandGraph.Node
 
-  defstruct nodes: %{}, unresolved_conflict_groups: [], rejected_nodes: []
+  defstruct nodes: %{},
+            unresolved_conflict_groups: [],
+            rejected_nodes: [],
+            deferred_resolutions: []
 
   def new do
     %__MODULE__{}
@@ -235,7 +238,7 @@ defmodule SeedFactory.Requirements.CommandGraph do
           graph
 
         :no_conflict ->
-          auto_resolve_conflict_if_possible_in_favour_of(graph, node_name)
+          auto_resolve_conflict_if_possible_in_favour_of(graph, node_name, required_by, traits)
       end
     else
       node = Node.new(%{name: node_name, required_by: %{required_by => traits}})
@@ -279,14 +282,61 @@ defmodule SeedFactory.Requirements.CommandGraph do
     |> require_node(required_by, node_name)
   end
 
-  def resolve_conflicts(%{unresolved_conflict_groups: []} = graph) do
-    graph
+  def resolve_conflicts(%__MODULE__{} = graph) do
+    case pop_resolvable_deferred_resolution(graph) do
+      {node_name, graph} ->
+        graph
+        |> resolve_conflicts_in_favour_of_the_node(node_name)
+        |> resolve_conflicts()
+
+      :none ->
+        case graph.unresolved_conflict_groups do
+          [] ->
+            ensure_deferred_requirements_satisfied!(graph)
+
+          [[primary_node_name | _] | _] ->
+            graph
+            |> resolve_conflicts_in_favour_of_the_node(primary_node_name)
+            |> resolve_conflicts()
+        end
+    end
   end
 
-  def resolve_conflicts(%{unresolved_conflict_groups: [[primary_node_name | _] | _]} = graph) do
+  defp pop_resolvable_deferred_resolution(%__MODULE__{} = graph) do
+    deferred =
+      Enum.find(graph.deferred_resolutions, fn deferred ->
+        case graph.nodes[deferred.node_name] do
+          nil -> false
+          node -> node.conflict_groups != []
+        end
+      end)
+
+    if deferred do
+      {deferred.node_name,
+       %{graph | deferred_resolutions: List.delete(graph.deferred_resolutions, deferred)}}
+    else
+      :none
+    end
+  end
+
+  defp ensure_deferred_requirements_satisfied!(%__MODULE__{} = graph) do
+    Enum.each(graph.deferred_resolutions, fn deferred ->
+      if not Map.has_key?(graph.nodes, deferred.node_name) do
+        case deferred.traits do
+          [] ->
+            :noop
+
+          [trait | _] ->
+            raise SeedFactory.TraitResolutionError,
+              entity: trait.entity,
+              trait: trait.name,
+              required_by: nil,
+              reason: {:commands_rejected, [deferred.node_name]}
+        end
+      end
+    end)
+
     graph
-    |> resolve_conflicts_in_favour_of_the_node(primary_node_name)
-    |> resolve_conflicts()
   end
 
   defp resolve_conflicts_in_favour_of_the_node(graph, node_name_to_keep) do
@@ -323,15 +373,28 @@ defmodule SeedFactory.Requirements.CommandGraph do
 
   defp auto_resolve_conflict_if_possible_in_favour_of(
          %__MODULE__{nodes: nodes} = graph,
-         node_name
+         node_name,
+         required_by,
+         traits
        ) do
     has_conflict? = Map.fetch!(nodes, node_name).conflict_groups != []
 
-    if has_conflict? and
-         not anything_in_vertical_conflicts?(nodes, node_name) do
-      resolve_conflicts_in_favour_of_the_node(graph, node_name)
-    else
-      graph
+    cond do
+      not has_conflict? ->
+        graph
+
+      not anything_in_vertical_conflicts?(nodes, node_name) ->
+        resolve_conflicts_in_favour_of_the_node(graph, node_name)
+
+      required_by == nil ->
+        # A top-level request leaves the command no alternative, but resolving now
+        # could wrongly remove nodes whose own conflicts are not settled yet.
+        # Remember the demand and let resolve_conflicts apply it.
+        deferred = %{node_name: node_name, traits: traits}
+        %{graph | deferred_resolutions: [deferred | graph.deferred_resolutions]}
+
+      true ->
+        graph
     end
   end
 
@@ -395,6 +458,36 @@ defmodule SeedFactory.Requirements.CommandGraph do
       end)
 
     do_topsort(rest ++ new_ready, [node | acc], nodes, in_counts)
+  end
+
+  # Conflict resolution can remove the producer a node was linked to while another
+  # producer of the same entity survives in the plan. Without a fresh edge the
+  # execution order between them is left to the topological sort tie-break.
+  def link_producers_of_required_entities(%__MODULE__{} = graph, context) do
+    Enum.reduce(graph.nodes, graph, fn {node_name, node}, graph ->
+      command = SeedFactory.Context.fetch_command!(context, node_name)
+
+      command.required_entities
+      |> Map.keys()
+      |> Enum.reduce(graph, fn entity_name, graph ->
+        binding_name = SeedFactory.Context.binding_name(context, entity_name)
+
+        live_producers =
+          if Map.has_key?(context, binding_name) do
+            []
+          else
+            context
+            |> SeedFactory.Context.fetch_command_names_by_entity!(entity_name)
+            |> Enum.filter(&(&1 != node_name and Map.has_key?(graph.nodes, &1)))
+          end
+
+        if live_producers == [] or Enum.any?(live_producers, &(&1 in node.requires)) do
+          graph
+        else
+          link_nodes(graph, live_producers, node_name, [])
+        end
+      end)
+    end)
   end
 
   def deprioritize_nodes_that_delete_entities_or_remove_traits(graph, context) do
