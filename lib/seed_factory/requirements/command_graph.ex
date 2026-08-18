@@ -12,22 +12,27 @@ defmodule SeedFactory.Requirements.CommandGraph do
     %__MODULE__{}
   end
 
-  def register_commands(graph, command_names, required_by, traits)
+  def register_commands(graph, command_names, required_by, traits, origin)
 
-  def register_commands(graph, [command_name], required_by, traits) do
+  def register_commands(graph, [command_name], required_by, traits, origin) do
     graph =
-      add_or_link_node(
-        graph,
-        command_name,
-        required_by,
-        traits,
-        :no_conflict
-      )
+      if Map.has_key?(graph.nodes, command_name) do
+        graph
+        |> link_nodes(command_name, required_by, traits)
+        |> auto_resolve_conflict_if_possible_in_favour_of(
+          command_name,
+          required_by,
+          traits,
+          origin
+        )
+      else
+        add_node(graph, Node.new(%{name: command_name, required_by: %{required_by => traits}}))
+      end
 
     {graph, MapSet.new([command_name])}
   end
 
-  def register_commands(graph, command_names, required_by, traits)
+  def register_commands(graph, command_names, required_by, traits, _origin)
       when command_names != [] do
     # if the command can be found in graph, and it doesn't have any conflict, it means, that it was requested
     # without ambiguity, so we can skip conflict resolution for the command
@@ -50,8 +55,7 @@ defmodule SeedFactory.Requirements.CommandGraph do
                   graph,
                   command_name,
                   required_by,
-                  Map.get(grouped_traits, command_name, []),
-                  :in_conflict_group
+                  Map.get(grouped_traits, command_name, [])
                 )
               end)
               |> add_conflict_group(command_names)
@@ -228,18 +232,9 @@ defmodule SeedFactory.Requirements.CommandGraph do
     %{graph | nodes: nodes}
   end
 
-  def add_or_link_node(graph, node_name, required_by, traits, type) when is_atom(required_by) do
+  defp add_or_link_node(graph, node_name, required_by, traits) when is_atom(required_by) do
     if Map.has_key?(graph.nodes, node_name) do
-      graph =
-        link_nodes(graph, node_name, required_by, traits)
-
-      case type do
-        :in_conflict_group ->
-          graph
-
-        :no_conflict ->
-          auto_resolve_conflict_if_possible_in_favour_of(graph, node_name, required_by, traits)
-      end
+      link_nodes(graph, node_name, required_by, traits)
     else
       node = Node.new(%{name: node_name, required_by: %{required_by => traits}})
 
@@ -306,8 +301,11 @@ defmodule SeedFactory.Requirements.CommandGraph do
     deferred =
       Enum.find(graph.deferred_resolutions, fn deferred ->
         case graph.nodes[deferred.node_name] do
-          nil -> false
-          node -> node.conflict_groups != []
+          nil ->
+            false
+
+          node ->
+            node.conflict_groups != [] and demand_settled?(graph.nodes, deferred.required_by)
         end
       end)
 
@@ -319,15 +317,39 @@ defmodule SeedFactory.Requirements.CommandGraph do
     end
   end
 
+  # The demand may only be applied while the command that expressed it is in the
+  # plan for sure. A dead demander leaves the entry to expire, an unresolved one
+  # leaves it waiting for a later pass.
+  defp demand_settled?(_nodes, nil), do: true
+
+  defp demand_settled?(nodes, required_by_name) do
+    case nodes[required_by_name] do
+      nil ->
+        false
+
+      node ->
+        node.conflict_groups == [] and requirement_settled?(nodes, required_by_name)
+    end
+  end
+
+  defp requirement_settled?(nodes, node_name) do
+    Enum.any?(Map.fetch!(nodes, node_name).required_by, fn {required_by_name, _traits} ->
+      demand_settled?(nodes, required_by_name)
+    end)
+  end
+
   defp ensure_deferred_requirements_satisfied!(%__MODULE__{} = graph) do
     Enum.each(graph.deferred_resolutions, fn deferred ->
-      if not Map.has_key?(graph.nodes, deferred.node_name) do
+      requirement_active? =
+        deferred.required_by == nil or Map.has_key?(graph.nodes, deferred.required_by)
+
+      if requirement_active? and not Map.has_key?(graph.nodes, deferred.node_name) do
         [trait | _] = deferred.traits
 
         raise SeedFactory.TraitResolutionError,
           entity: trait.entity,
           trait: trait.name,
-          required_by: nil,
+          required_by: deferred.required_by,
           reason: {:commands_rejected, [deferred.node_name]}
       end
     end)
@@ -371,7 +393,8 @@ defmodule SeedFactory.Requirements.CommandGraph do
          %__MODULE__{nodes: nodes} = graph,
          node_name,
          required_by,
-         traits
+         traits,
+         origin
        ) do
     has_conflict? = Map.fetch!(nodes, node_name).conflict_groups != []
 
@@ -382,11 +405,11 @@ defmodule SeedFactory.Requirements.CommandGraph do
       not anything_in_vertical_conflicts?(nodes, node_name) ->
         resolve_conflicts_in_favour_of_the_node(graph, node_name)
 
-      required_by == nil ->
-        # A top-level request leaves the command no alternative, but resolving now
-        # could wrongly remove nodes whose own conflicts are not settled yet.
-        # Remember the demand and let resolve_conflicts apply it.
-        deferred = %{node_name: node_name, traits: traits}
+      origin == :trait_exec or required_by == nil ->
+        # The demand leaves the command no alternative, but resolving now could
+        # wrongly remove nodes whose own conflicts are not settled yet. Remember
+        # the demand and let resolve_conflicts apply it once it settles.
+        deferred = %{node_name: node_name, required_by: required_by, traits: traits}
         %{graph | deferred_resolutions: [deferred | graph.deferred_resolutions]}
 
       true ->
@@ -433,8 +456,7 @@ defmodule SeedFactory.Requirements.CommandGraph do
     sorted_nodes = do_topsort(queue, [], nodes, in_counts)
 
     if length(sorted_nodes) != map_size(nodes) do
-      commands_in_cycles =
-        Enum.sort(Map.keys(nodes) -- Enum.map(sorted_nodes, & &1.name))
+      commands_in_cycles = Map.keys(nodes) -- Enum.map(sorted_nodes, & &1.name)
 
       raise SeedFactory.CircularDependencyError, commands: commands_in_cycles
     end

@@ -22,7 +22,8 @@ defmodule SeedFactory.Requirements.Collector do
               requirements.graph,
               Enum.map(filtered_traits, & &1.exec_step.command_name),
               required_by,
-              filtered_traits
+              filtered_traits,
+              :trait_exec
             )
 
           updated_requirements = %{requirements | graph: graph}
@@ -305,7 +306,8 @@ defmodule SeedFactory.Requirements.Collector do
                     requirements.graph,
                     names,
                     required_by,
-                    traits
+                    traits,
+                    :producer
                   )
 
                 requirements = %{requirements | graph: graph}
@@ -332,7 +334,8 @@ defmodule SeedFactory.Requirements.Collector do
                     requirements.graph,
                     command_names_that_can_produce_entity,
                     required_by,
-                    []
+                    [],
+                    :producer
                   )
 
                 requirements = %{requirements | graph: graph}

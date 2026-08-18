@@ -432,7 +432,7 @@ defmodule SeedFactory.CircularDependencyError do
   defexception [:message, :commands]
 
   def exception(opts) when is_list(opts) do
-    commands = Keyword.fetch!(opts, :commands)
+    commands = opts |> Keyword.fetch!(:commands) |> Enum.sort()
 
     message = "commands have circular dependencies: #{inspect(commands)}"
 
