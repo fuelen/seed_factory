@@ -156,11 +156,9 @@ defmodule SeedFactory.Requirements.Collector do
         if any_prerequisite_trait_satisfied?(from_any_of, traits_by_name, trail_map) do
           {:ok, acc}
         else
-          from = hd(from_any_of)
-
-          collect_requirements_for_prerequisite_trait(
+          collect_requirements_for_first_viable_prerequisite(
+            from_any_of,
             trait.name,
-            from,
             acc,
             traits_by_name,
             trail_map,
@@ -168,6 +166,32 @@ defmodule SeedFactory.Requirements.Collector do
           )
         end
     end
+  end
+
+  # A failed attempt returns an error without its acc copy, so the next option
+  # starts from the untouched graph. When every option fails, the error of the
+  # first one is reported, as it represents the preferred route.
+  defp collect_requirements_for_first_viable_prerequisite(
+         from_any_of,
+         trait_name,
+         acc,
+         traits_by_name,
+         trail_map,
+         required_by
+       ) do
+    Enum.reduce_while(from_any_of, nil, fn from, first_error ->
+      case collect_requirements_for_prerequisite_trait(
+             trait_name,
+             from,
+             acc,
+             traits_by_name,
+             trail_map,
+             required_by
+           ) do
+        {:ok, _} = ok -> {:halt, ok}
+        {:error, _} = error -> {:cont, first_error || error}
+      end
+    end)
   end
 
   defp collect_requirements_for_prerequisite_trait(
