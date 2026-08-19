@@ -280,14 +280,25 @@ defmodule SeedFactory.Requirements.Collector do
                     required_by
                   )
 
-                  collect_requirements_for_traits(
-                    acc,
-                    absent_trait_names,
-                    traits_by_name,
-                    entity_name,
-                    SeedFactory.Trail.to_map(trail),
-                    required_by
-                  )
+                  case SeedFactory.Requirements.Restrictions.check_traits_not_consumed(
+                         context,
+                         entity_name,
+                         absent_trait_names,
+                         traits_by_name
+                       ) do
+                    :ok ->
+                      collect_requirements_for_traits(
+                        acc,
+                        absent_trait_names,
+                        traits_by_name,
+                        entity_name,
+                        SeedFactory.Trail.to_map(trail),
+                        required_by
+                      )
+
+                    {:error, _} = error ->
+                      error
+                  end
                 end
               end
             else

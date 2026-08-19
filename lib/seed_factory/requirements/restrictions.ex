@@ -32,12 +32,15 @@ defmodule SeedFactory.Requirements.Restrictions do
             if subsequent_traits == [] do
               acc
             else
-              ensure_current_trait_names_do_not_conflict_with_required_trait_names!(
-                context,
-                entity_name,
-                subsequent_traits,
-                required_trait_names
-              )
+              case check_current_traits_conflict(
+                     context,
+                     entity_name,
+                     subsequent_traits,
+                     required_trait_names
+                   ) do
+                :ok -> :ok
+                {:error, exception} -> raise exception
+              end
 
               [{entity_name, subsequent_traits} | acc]
             end
@@ -176,7 +179,21 @@ defmodule SeedFactory.Requirements.Restrictions do
     scan_subsequent_traits(subsequent_trait_names, traits_by_name, subsequent_trait_names ++ acc)
   end
 
-  defp ensure_current_trait_names_do_not_conflict_with_required_trait_names!(
+  # Demanded traits must still be reachable: an entity whose current traits lie
+  # past a demanded one cannot get it back. Returns the exception instead of
+  # raising so a demanding command in a conflict group can be dropped in favour
+  # of another candidate.
+  def check_traits_not_consumed(context, entity_name, trait_names, traits_by_name) do
+    case scan_subsequent_traits(trait_names, traits_by_name) do
+      [] ->
+        :ok
+
+      subsequent_traits ->
+        check_current_traits_conflict(context, entity_name, subsequent_traits, trait_names)
+    end
+  end
+
+  defp check_current_traits_conflict(
          context,
          entity_name,
          subsequent_traits,
@@ -186,10 +203,10 @@ defmodule SeedFactory.Requirements.Restrictions do
 
     case SeedFactory.Context.fetch_trail(context, binding_name) do
       nil ->
-        :noop
+        :ok
 
       trail ->
-        do_ensure_current_trait_names_do_not_conflict_with_required_trait_names!(
+        do_check_current_traits_conflict(
           entity_name,
           subsequent_traits,
           required_trait_names,
@@ -200,7 +217,7 @@ defmodule SeedFactory.Requirements.Restrictions do
     end
   end
 
-  defp do_ensure_current_trait_names_do_not_conflict_with_required_trait_names!(
+  defp do_check_current_traits_conflict(
          entity_name,
          subsequent_traits,
          required_trait_names,
@@ -223,21 +240,27 @@ defmodule SeedFactory.Requirements.Restrictions do
 
       case trail_analysis do
         nil ->
-          raise SeedFactory.TraitPathNotFoundError,
-            entity: entity_name,
-            binding: binding_name,
-            required_traits: required_trait_names,
-            conflicting_traits: intersection,
-            current_traits: current_trait_names
+          {:error,
+           SeedFactory.TraitPathNotFoundError.exception(
+             entity: entity_name,
+             binding: binding_name,
+             required_traits: required_trait_names,
+             conflicting_traits: intersection,
+             current_traits: current_trait_names
+           )}
 
         {command_name, removed_traits} ->
-          raise SeedFactory.TraitRemovedByCommandError,
-            entity: entity_name,
-            binding: binding_name,
-            removed_traits: removed_traits,
-            command: command_name,
-            current_traits: current_trait_names
+          {:error,
+           SeedFactory.TraitRemovedByCommandError.exception(
+             entity: entity_name,
+             binding: binding_name,
+             removed_traits: removed_traits,
+             command: command_name,
+             current_traits: current_trait_names
+           )}
       end
+    else
+      :ok
     end
   end
 end

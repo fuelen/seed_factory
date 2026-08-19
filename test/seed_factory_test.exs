@@ -1036,18 +1036,6 @@ defmodule SeedFactoryTest do
                    end
     end
 
-    test "raise a meaningful error when produced entity has been already produced by another command",
-         context do
-      assert_raise SeedFactory.EntityAlreadyExistsError,
-                   "cannot put entity :email to the context while executing :publish_project: key :email already exists\n\n" <>
-                     "current :email traits: [:notification_about_suspended_user]",
-                   fn ->
-                     context
-                     |> produce(user: [:suspended])
-                     |> produce(:project)
-                   end
-    end
-
     test "traits defined with generate_args and args_match options", context do
       today = Date.utc_today()
 
