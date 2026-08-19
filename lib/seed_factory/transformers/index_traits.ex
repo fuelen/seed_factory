@@ -46,7 +46,10 @@ defmodule SeedFactory.Transformers.IndexTraits do
   end
 
   defp populate_to_field(traits) do
-    from_to_mapping = Enum.group_by(traits, & &1.from, & &1.name)
+    from_to_mapping =
+      traits
+      |> Enum.flat_map(fn trait -> Enum.map(List.wrap(trait.from), &{&1, trait.name}) end)
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
 
     Enum.map(traits, fn trait ->
       to = from_to_mapping[trait.name] || []
