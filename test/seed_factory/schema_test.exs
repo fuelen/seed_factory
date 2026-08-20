@@ -1883,6 +1883,65 @@ defmodule SeedFactory.SchemaTest do
       )
     end
 
+    test "raises when the cycle goes through a shadowed declaration" do
+      # The cycle edge sits on the first declaration of :published, which a
+      # name-keyed lookup would shadow with the second one.
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> unpublished -> post defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          circular trait dependency detected: published -> unpublished -> published
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_post do
+              resolve(fn _ -> {:ok, %{post: %{id: 1}}} end)
+              produce :post
+            end
+
+            command :republish_post do
+              param :post, entity: :post
+              resolve(fn _ -> {:ok, %{post: %{id: 1}}} end)
+              update :post
+            end
+
+            command :publish_post do
+              param :post, entity: :post
+              resolve(fn _ -> {:ok, %{post: %{id: 1}}} end)
+              update :post
+            end
+
+            command :unpublish_post do
+              param :post, entity: :post
+              resolve(fn _ -> {:ok, %{post: %{id: 1}}} end)
+              update :post
+            end
+
+            trait :draft, :post do
+              exec :create_post
+            end
+
+            trait :published, :post do
+              from [:unpublished]
+              exec :republish_post
+            end
+
+            trait :published, :post do
+              from :draft
+              exec :publish_post
+            end
+
+            trait :unpublished, :post do
+              from :published
+              exec :unpublish_post
+            end
+          end
+        end
+      )
+    end
+
     test "raises when trait from list contains invalid reference" do
       assert_dsl_error(
         """

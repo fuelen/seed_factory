@@ -160,7 +160,9 @@ defmodule SeedFactory.Transformers.IndexTraits do
   end
 
   defp ensure_no_circular_dependencies(entity, traits) do
-    traits_by_name = Map.new(traits, &{&1.name, &1})
+    # Every declaration of a name contributes from-edges: a map keyed by name
+    # alone would shadow all declarations but the last one.
+    traits_by_name = Enum.group_by(traits, & &1.name)
 
     Enum.reduce(traits, MapSet.new(), fn trait, visited ->
       detect_cycle(trait.name, traits_by_name, MapSet.new(), [], visited, entity)
@@ -174,10 +176,17 @@ defmodule SeedFactory.Transformers.IndexTraits do
 
       MapSet.member?(in_path, trait_name) ->
         cycle = build_cycle_path(trait_name, path_list)
-        trait = traits_by_name[hd(path_list)]
+        edge_owner = hd(path_list)
+
+        # The name may be declared several times: point at the declaration
+        # carrying the edge that closes the cycle, not at the first one.
+        trait =
+          traits_by_name
+          |> Map.fetch!(edge_owner)
+          |> Enum.find(&(trait_name in List.wrap(&1.from)))
 
         raise Spark.Error.DslError,
-          path: [:root, :trait, hd(path_list), entity],
+          path: [:root, :trait, edge_owner, entity],
           message: "circular trait dependency detected: #{cycle}",
           location: Spark.Dsl.Entity.anno(trait)
 
@@ -188,22 +197,22 @@ defmodule SeedFactory.Transformers.IndexTraits do
   end
 
   defp traverse_from(trait_name, traits_by_name, in_path, path_list, visited, entity) do
-    case Map.fetch!(traits_by_name, trait_name) do
-      %{from: nil} ->
+    traits_by_name
+    |> Map.fetch!(trait_name)
+    |> Enum.reduce(visited, fn
+      %{from: nil}, visited ->
         visited
 
-      %{from: from} when is_atom(from) ->
-        new_in_path = MapSet.put(in_path, trait_name)
-        detect_cycle(from, traits_by_name, new_in_path, [trait_name | path_list], visited, entity)
-
-      %{from: from_list} when is_list(from_list) ->
+      %{from: from}, visited ->
         new_in_path = MapSet.put(in_path, trait_name)
         new_path_list = [trait_name | path_list]
 
-        Enum.reduce(from_list, visited, fn from, visited ->
-          detect_cycle(from, traits_by_name, new_in_path, new_path_list, visited, entity)
+        from
+        |> List.wrap()
+        |> Enum.reduce(visited, fn from_name, visited ->
+          detect_cycle(from_name, traits_by_name, new_in_path, new_path_list, visited, entity)
         end)
-    end
+    end)
   end
 
   defp build_cycle_path(trait_name, path_list) do
