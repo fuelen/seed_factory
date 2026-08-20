@@ -13,8 +13,8 @@ defmodule SeedFactory.Requirements.Collector do
         {:already_executed, result} ->
           result
 
-        {:trait_mismatch, trait, added} ->
-          {:error, {:trait_mismatch, trait, added, required_by}}
+        {:trait_mismatch, executed_traits} ->
+          {:error, {:trait_mismatch, executed_traits, required_by}}
 
         :continue ->
           {graph, updated_command_names} =
@@ -70,25 +70,28 @@ defmodule SeedFactory.Requirements.Collector do
     end
   end
 
+  # The trait may be declared on several commands and more than one of them may
+  # sit in the trail, so a mismatch is reported only when no executed
+  # declaration added the trait.
   defp check_already_executed(filtered_traits, trail_map, acc) do
-    executed_trait =
-      Enum.find_value(filtered_traits, fn trait ->
+    executed_traits =
+      Enum.flat_map(filtered_traits, fn trait ->
         case trail_map[trait.exec_step.command_name] do
-          nil -> nil
-          data -> {trait, data}
+          nil -> []
+          data -> [{trait, data}]
         end
       end)
 
-    case executed_trait do
-      nil ->
+    cond do
+      executed_traits == [] ->
         :continue
 
-      {trait, %{added: added}} ->
-        if trait.name in added do
-          {:already_executed, {:ok, acc}}
-        else
-          {:trait_mismatch, trait, added}
-        end
+      Enum.any?(executed_traits, fn {trait, %{added: added}} -> trait.name in added end) ->
+        {:already_executed, {:ok, acc}}
+
+      true ->
+        {:trait_mismatch,
+         Enum.map(executed_traits, fn {trait, %{added: added}} -> {trait, added} end)}
     end
   end
 

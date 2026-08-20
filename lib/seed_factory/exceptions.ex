@@ -301,18 +301,20 @@ defmodule SeedFactory.TraitResolutionError do
     ] ++ reason_lines(reason, indent + 2)
   end
 
-  defp reason_lines({:trait_mismatch, trait, added, required_by}, indent) do
+  defp reason_lines({:trait_mismatch, executed_traits, required_by}, indent) do
     label =
       case required_by do
         nil -> "specified trait"
         command_name -> "trait required by #{inspect(command_name)} command"
       end
 
-    [
-      "#{indent_prefix(indent)}- traits of previously executed command #{inspect(trait.exec_step.command_name)} do not match:",
-      "#{indent_prefix(indent + 4)}previously applied traits: #{inspect(added)}",
-      "#{indent_prefix(indent + 4)}#{label}: #{inspect(trait.name)}"
-    ]
+    Enum.flat_map(executed_traits, fn {trait, added} ->
+      [
+        "#{indent_prefix(indent)}- traits of previously executed command #{inspect(trait.exec_step.command_name)} do not match:",
+        "#{indent_prefix(indent + 4)}previously applied traits: #{inspect(added)}",
+        "#{indent_prefix(indent + 4)}#{label}: #{inspect(trait.name)}"
+      ]
+    end)
   end
 
   defp reason_lines({:all_traits_failed, errors}, indent) do
