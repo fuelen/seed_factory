@@ -86,13 +86,15 @@ defmodule SeedFactory.TraitOrderTest do
   end
 
   test "produce raises when requested traits force conflicting commands", context do
+    # Traits commit greedily in request order: :imported takes :import_license,
+    # so :issued is the one left without a command.
     error =
       assert_raise SeedFactory.TraitResolutionError, fn ->
         produce(context, license: [:suspended, :imported, :issued])
       end
 
     assert error.entity == :license
-    assert error.trait == :imported
+    assert error.trait == :issued
 
     assert_raise SeedFactory.TraitResolutionError, fn ->
       produce(context, license: [:issued, :imported, :suspended])

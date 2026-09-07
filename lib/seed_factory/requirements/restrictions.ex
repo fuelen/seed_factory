@@ -123,41 +123,44 @@ defmodule SeedFactory.Requirements.Restrictions do
     end)
   end
 
+  # The commands preferred by the requested traits go first and the remaining
+  # ones behind them, so the preference decides the resolution order while the
+  # alternatives stay available when the preferred commands lose their
+  # conflicts.
   def command_names_and_traits_for_entity(%__MODULE__{} = restrictions, context, entity_name) do
-    case restrictions.command_names_and_traits_by_entity[entity_name] do
-      {_command_names, _traits} = result ->
-        result
+    all_command_names = SeedFactory.Context.fetch_command_names_by_entity!(context, entity_name)
 
+    case restrictions.command_names_and_traits_by_entity[entity_name] do
       nil ->
-        {SeedFactory.Context.fetch_command_names_by_entity!(context, entity_name), []}
+        {all_command_names, []}
+
+      {command_names, traits} ->
+        {command_names ++ (all_command_names -- command_names), traits}
     end
   end
 
-  def ensure_not_restricted!(
+  # Returns the exception instead of raising so a demanding command in a
+  # conflict group can be dropped in favour of another candidate.
+  def check_not_restricted(
         %__MODULE__{} = restrictions,
         entity_name,
         binding_name,
         trait_names_to_apply,
         required_by
       ) do
-    case Map.fetch(restrictions.subsequent_traits, entity_name) do
-      {:ok, subsequent_traits} ->
-        intersection = SeedFactory.ListUtils.intersection(trait_names_to_apply, subsequent_traits)
-
-        if Enum.any?(intersection) do
-          raise SeedFactory.TraitRestrictionConflictError,
-            entity: entity_name,
-            binding: binding_name,
-            traits: intersection,
-            required_by: required_by,
-            requested_traits:
-              Map.fetch!(restrictions.requested_trait_names_by_entity, entity_name)
-        end
-
-        :ok
-
-      :error ->
-        :noop
+    with {:ok, subsequent_traits} <- Map.fetch(restrictions.subsequent_traits, entity_name),
+         [_ | _] = intersection <-
+           SeedFactory.ListUtils.intersection(trait_names_to_apply, subsequent_traits) do
+      {:error,
+       SeedFactory.TraitRestrictionConflictError.exception(
+         entity: entity_name,
+         binding: binding_name,
+         traits: intersection,
+         required_by: required_by,
+         requested_traits: Map.fetch!(restrictions.requested_trait_names_by_entity, entity_name)
+       )}
+    else
+      _ -> :ok
     end
   end
 

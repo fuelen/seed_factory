@@ -551,18 +551,19 @@ defmodule SeedFactoryTest do
                updated: []
              }
 
-      # two conflict groups: for draft_project and for email
+      # the requested :draft_project must survive: :publish_project would
+      # consume it, so :email comes from :suspend_user instead
 
       {_context, diff} =
         with_diff(context, fn ->
           context
           |> produce(draft_project: [], email: [])
-          |> assert_trait(:email, [:notification_about_published_project])
-          |> assert_trait(:project, [:not_expired])
+          |> assert_trait(:email, [:notification_about_suspended_user])
+          |> assert_trait(:draft_project, [])
         end)
 
       assert diff == %{
-               added: [:email, :office, :org, :profile, :project, :user],
+               added: [:draft_project, :email, :office, :org, :profile, :user],
                deleted: [],
                updated: []
              }
@@ -571,11 +572,11 @@ defmodule SeedFactoryTest do
         with_diff(context, fn ->
           context
           |> produce([:draft_project, email: [:delivered]])
-          |> assert_trait(:email, [:delivered, :notification_about_published_project])
+          |> assert_trait(:email, [:delivered, :notification_about_suspended_user])
         end)
 
       assert diff == %{
-               added: [:email, :office, :org, :profile, :project, :user],
+               added: [:draft_project, :email, :office, :org, :profile, :user],
                deleted: [],
                updated: []
              }
@@ -982,12 +983,14 @@ defmodule SeedFactoryTest do
                    end
     end
 
-    test "commands that remove entities should be executed at the end", context do
-      # it is important, that :publish_project command is executed before :suspend_user, so we have expected error
-      # and not "cannot put entity :email to the context while executing :publish_project: key :email already exists"
-      assert_raise SeedFactory.EntityAlreadyExistsError,
-                   "cannot put entity :email to the context while executing :suspend_user: key :email already exists\n\n" <>
-                     "current :email traits: [:notification_about_published_project]",
+    test "commands producing a common entity cannot be planned together", context do
+      # :publish_project (the only way to :project) and :suspend_user (the only
+      # way to the :suspended trait) both produce :email, so the request is
+      # refused during planning instead of failing at execution. Both demands
+      # leave no alternative and the later one in the request is reported.
+      assert_raise SeedFactory.TraitResolutionError,
+                   "cannot satisfy trait :suspended for entity :user (requested trait)\n" <>
+                     "- candidate command :suspend_user was previously rejected during conflict resolution",
                    fn ->
                      produce(context, [:project, user: [:suspended]])
                    end

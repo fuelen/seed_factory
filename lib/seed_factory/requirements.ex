@@ -2,15 +2,27 @@ defmodule SeedFactory.Requirements do
   @moduledoc false
 
   alias SeedFactory.Requirements.CommandGraph
-  alias SeedFactory.Requirements.Restrictions
+  alias SeedFactory.Requirements.Solver
 
-  @enforce_keys [:context, :restrictions, :graph]
-  defstruct [:context, :restrictions, :graph]
+  @enforce_keys [:context, :graph]
+  defstruct [:context, :graph]
 
-  def new(context, entities_with_trait_names) do
-    restrictions = Restrictions.new(context, entities_with_trait_names)
-    graph = CommandGraph.new()
-    %__MODULE__{context: context, restrictions: restrictions, graph: graph}
+  def build(context, entities_with_trait_names) do
+    %__MODULE__{context: context, graph: Solver.build_graph(context, entities_with_trait_names)}
+  end
+
+  def build_for_pre_produce(context, entities_with_trait_names) do
+    %__MODULE__{
+      context: context,
+      graph: Solver.build_graph_for_pre_produce(context, entities_with_trait_names)
+    }
+  end
+
+  def build_for_command(context, command, initial_input) do
+    %__MODULE__{
+      context: context,
+      graph: Solver.build_graph_for_command(context, command, initial_input)
+    }
   end
 
   def apply_to_context(requirements, _exec_fn) when map_size(requirements.graph.nodes) == 0 do
@@ -52,22 +64,7 @@ defmodule SeedFactory.Requirements do
     end)
   end
 
-  def resolve_conflicts(%__MODULE__{} = requirements) do
-    %{requirements | graph: CommandGraph.resolve_conflicts(requirements.graph)}
-  end
-
   def delete_explicitly_requested_commands(%__MODULE__{} = requirements) do
     %{requirements | graph: CommandGraph.delete_explicitly_requested_nodes(requirements.graph)}
   end
-
-  def unwrap!({:ok, requirements}), do: requirements
-  def unwrap!({:error, exception}), do: raise(exception)
-
-  # Delegation to Collector
-
-  defdelegate for_command(requirements, command, initial_input, required_by),
-    to: SeedFactory.Requirements.Collector
-
-  defdelegate for_entities_with_trait_names(requirements, entities_with_trait_names, required_by),
-    to: SeedFactory.Requirements.Collector
 end

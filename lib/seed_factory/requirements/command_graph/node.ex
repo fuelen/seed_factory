@@ -2,38 +2,15 @@ defmodule SeedFactory.Requirements.CommandGraph.Node do
   @moduledoc false
   @enforce_keys [:name, :required_by]
 
-  @derive {Inspect, optional: [:conflict_groups, :requires]}
-  defstruct [:name, :required_by, conflict_groups: [], requires: MapSet.new()]
+  @derive {Inspect, optional: [:requires]}
+  defstruct [:name, :required_by, requires: MapSet.new()]
 
   def new(params) do
     struct!(__MODULE__, params)
   end
 
-  def add_conflict_group(%__MODULE__{} = node, conflict_group) do
-    conflict_groups = [conflict_group | node.conflict_groups]
-    %{node | conflict_groups: conflict_groups}
-  end
-
-  def replace_conflict_group(%__MODULE__{} = node, old, new) do
-    conflict_groups = [new | List.delete(node.conflict_groups, old)]
-    %{node | conflict_groups: conflict_groups}
-  end
-
-  def remove_conflict_group(%__MODULE__{} = node, conflict_group) do
-    conflict_groups = List.delete(node.conflict_groups, conflict_group)
-    %{node | conflict_groups: conflict_groups}
-  end
-
   def require_node(%__MODULE__{} = node, node_name_to_add) do
     %{node | requires: MapSet.put(node.requires, node_name_to_add)}
-  end
-
-  def unrequire_node(%__MODULE__{} = node, node_name_to_remove) do
-    %{node | requires: MapSet.delete(node.requires, node_name_to_remove)}
-  end
-
-  def set_required_by(%__MODULE__{} = node, required_by) do
-    %{node | required_by: required_by}
   end
 
   def merge_required_by(%__MODULE__{} = node, required_by) do

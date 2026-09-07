@@ -343,6 +343,13 @@ defmodule SeedFactory do
 
       # uses :import_draft_project
       produce(context, draft_project: [:imported])
+
+  Requested traits also influence how other entities in the plan are produced.
+  A command that satisfies a requested trait is preferred for every entity it
+  produces, so related entities come from the same command whenever possible.
+  The declaration order decides among equally preferred commands. When the
+  preferred command cannot be part of the plan, another command that produces
+  the entity is used.
   """
   @spec produce(
           context(),
@@ -364,10 +371,7 @@ defmodule SeedFactory do
         Context.rebind(context, rebinding, fn context ->
           Context.lock_creation_of_dependent_entities(context, fn context ->
             context
-            |> Requirements.new(entities_with_trait_names)
-            |> Requirements.for_entities_with_trait_names(entities_with_trait_names, nil)
-            |> Requirements.unwrap!()
-            |> Requirements.resolve_conflicts()
+            |> Requirements.build(entities_with_trait_names)
             |> Requirements.apply_to_context(&exec/3)
           end)
         end)
@@ -425,10 +429,7 @@ defmodule SeedFactory do
         Context.rebind(context, rebinding, fn context ->
           Context.lock_creation_of_dependent_entities(context, fn context ->
             context
-            |> Requirements.new(entities_with_trait_names)
-            |> Requirements.for_entities_with_trait_names(entities_with_trait_names, nil)
-            |> Requirements.unwrap!()
-            |> Requirements.resolve_conflicts()
+            |> Requirements.build_for_pre_produce(entities_with_trait_names)
             |> Requirements.delete_explicitly_requested_commands()
             |> Requirements.apply_to_context(&exec/3)
           end)
@@ -602,10 +603,7 @@ defmodule SeedFactory do
   defp create_dependent_entities_if_needed(context, command, initial_input) do
     Context.lock_creation_of_dependent_entities(context, fn context ->
       context
-      |> Requirements.new([])
-      |> Requirements.for_command(command, initial_input, nil)
-      |> Requirements.unwrap!()
-      |> Requirements.resolve_conflicts()
+      |> Requirements.build_for_command(command, initial_input)
       |> Requirements.apply_to_context(&exec/3)
     end)
   end

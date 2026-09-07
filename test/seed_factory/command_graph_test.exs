@@ -12,7 +12,7 @@ defmodule SeedFactory.Requirements.CommandGraphTest do
 
   defp build_graph(node_list) do
     nodes = Map.new(node_list, fn node -> {node.name, node} end)
-    %CommandGraph{nodes: nodes, unresolved_conflict_groups: [], rejected_nodes: []}
+    %CommandGraph{nodes: nodes}
   end
 
   defp sorted_names(graph) do
@@ -204,6 +204,47 @@ defmodule SeedFactory.Requirements.CommandGraphTest do
 
       assert Enum.all?(result, &match?(%Node{}, &1))
       assert Enum.map(result, & &1.name) == [:a, :b]
+    end
+  end
+
+  defmodule LinkSchema do
+    use SeedFactory.Schema
+
+    command :make_dep do
+      resolve(fn _ -> {:ok, %{dep: :dep}} end)
+
+      produce :dep
+    end
+
+    command :use_dep do
+      param :dep, entity: :dep
+
+      resolve(fn _ -> {:ok, %{out: :out}} end)
+
+      produce :out
+    end
+  end
+
+  describe "link_producers_of_required_entities/2" do
+    test "links a node to the live producer of an entity it requires" do
+      context = SeedFactory.Context.init(%{}, LinkSchema)
+      graph = build_graph([build_node(:make_dep), build_node(:use_dep)])
+
+      linked = CommandGraph.link_producers_of_required_entities(graph, context)
+
+      assert MapSet.member?(linked.nodes[:use_dep].requires, :make_dep)
+    end
+
+    test "leaves an already linked node alone" do
+      context = SeedFactory.Context.init(%{}, LinkSchema)
+
+      graph =
+        build_graph([
+          build_node(:make_dep, required_by: %{nil => [], use_dep: []}),
+          build_node(:use_dep, requires: MapSet.new([:make_dep]))
+        ])
+
+      assert CommandGraph.link_producers_of_required_entities(graph, context) == graph
     end
   end
 

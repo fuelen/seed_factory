@@ -441,3 +441,36 @@ defmodule SeedFactory.CircularDependencyError do
     %__MODULE__{message: message, commands: commands}
   end
 end
+
+defmodule SeedFactory.UnproducibleEntityError do
+  defexception [:message, :entity, :required_by, :commands, :cause]
+
+  def exception(opts) when is_list(opts) do
+    entity = Keyword.fetch!(opts, :entity)
+    required_by = Keyword.fetch!(opts, :required_by)
+    commands = Keyword.fetch!(opts, :commands)
+    cause = Keyword.get(opts, :cause, :rejected)
+
+    required_by_part = if required_by, do: " required by #{inspect(required_by)}", else: ""
+
+    # :not_planned lists candidates that may have never entered the plan, so it
+    # must not claim they were rejected.
+    cause_part =
+      case cause do
+        :rejected -> "all commands able to produce it were rejected during conflict resolution: "
+        :not_planned -> "no command able to produce it is part of the execution plan: "
+      end
+
+    message =
+      "cannot produce entity #{inspect(entity)}#{required_by_part}: " <>
+        cause_part <> inspect(commands)
+
+    %__MODULE__{
+      message: message,
+      entity: entity,
+      required_by: required_by,
+      commands: commands,
+      cause: cause
+    }
+  end
+end

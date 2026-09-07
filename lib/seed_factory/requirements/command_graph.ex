@@ -3,217 +3,21 @@ defmodule SeedFactory.Requirements.CommandGraph do
 
   alias SeedFactory.Requirements.CommandGraph.Node
 
-  defstruct nodes: %{},
-            unresolved_conflict_groups: [],
-            rejected_nodes: [],
-            deferred_resolutions: []
+  # The final execution graph the solver materializes its plan into: `nodes`
+  # maps command names to nodes whose `required_by`/`requires` edges drive the
+  # topological sort.
+  defstruct nodes: %{}
 
-  def new do
-    %__MODULE__{}
-  end
-
-  def register_commands(graph, command_names, required_by, traits, origin)
-
-  def register_commands(graph, [command_name], required_by, traits, origin) do
-    graph =
-      if Map.has_key?(graph.nodes, command_name) do
-        graph
-        |> link_nodes(command_name, required_by, traits)
-        |> auto_resolve_conflict_if_possible_in_favour_of(
-          command_name,
-          required_by,
-          traits,
-          origin
-        )
-      else
-        add_node(graph, Node.new(%{name: command_name, required_by: %{required_by => traits}}))
-      end
-
-    {graph, MapSet.new([command_name])}
-  end
-
-  def register_commands(graph, command_names, required_by, traits, _origin)
-      when command_names != [] do
-    # if the command can be found in graph, and it doesn't have any conflict, it means, that it was requested
-    # without ambiguity, so we can skip conflict resolution for the command
-    # If a command is already in the graph without conflict groups, it was either never
-    # conflicted or was already resolved via a trait. It's safe to link to it directly,
-    # even if it has vertical conflicts through other required_by paths.
-    case Enum.find(command_names, fn command_name ->
-           Map.has_key?(graph.nodes, command_name) and
-             graph.nodes[command_name].conflict_groups == []
-         end) do
-      nil ->
-        case analyze_conflict_group(graph, command_names) do
-          :new_group ->
-            grouped_traits = Enum.group_by(traits, & &1.exec_step.command_name)
-
-            graph =
-              command_names
-              |> Enum.reduce(graph, fn command_name, graph ->
-                add_or_link_node(
-                  graph,
-                  command_name,
-                  required_by,
-                  Map.get(grouped_traits, command_name, [])
-                )
-              end)
-              |> add_conflict_group(command_names)
-
-            {graph, MapSet.new(command_names)}
-
-          :exists ->
-            graph = link_nodes(graph, command_names, required_by, traits)
-            {graph, MapSet.new([])}
-
-          {:is_subset, diff} ->
-            # Only remove commands from diff if they are NOT in any other conflict groups.
-            # This prevents premature removal of commands that are still needed for other conflicts.
-            commands_to_remove =
-              Enum.filter(diff, fn cmd_name ->
-                length(graph.nodes[cmd_name].conflict_groups) == 1
-              end)
-
-            graph =
-              commands_to_remove
-              |> Enum.reduce(graph, &remove_node(&2, &1))
-              |> link_nodes(command_names, required_by, traits)
-
-            {graph, MapSet.new([])}
-
-          {:contains_subset, subset} ->
-            graph = link_nodes(graph, subset, required_by, traits)
-            {graph, MapSet.new([])}
-        end
-
-      command_name ->
-        traits = Enum.filter(traits, &(&1.exec_step.command_name == command_name))
-        graph = link_nodes(graph, command_name, required_by, traits)
-        {graph, MapSet.new()}
-    end
-  end
-
-  defp add_node(%__MODULE__{} = graph, %Node{} = node) do
-    nodes = Map.put(graph.nodes, node.name, node)
-
-    node.required_by
-    |> Map.keys()
-    |> Enum.reduce(%{graph | nodes: nodes}, &require_node(&2, &1, node.name))
-  end
-
-  def remove_node(%__MODULE__{} = graph, node_name) do
-    node = Map.fetch!(graph.nodes, node_name)
-
-    nodes =
-      graph.nodes
-      |> Map.delete(node_name)
-      |> unrequire_node_names(node_name, Map.keys(node.required_by))
-
-    graph = %{graph | nodes: nodes, rejected_nodes: [node_name | graph.rejected_nodes]}
-
-    graph =
-      remove_node_name_from_conflict_groups_if_present(graph, node)
-
-    Enum.reduce(
-      node.requires,
-      graph,
-      &remove_node_while_required_by_is_empty(&2, &1, node_name)
-    )
-  end
-
-  defp remove_node_while_required_by_is_empty(graph, node_name, deleted_required_by) do
-    node = Map.fetch!(graph.nodes, node_name)
-    new_required_by = Map.delete(node.required_by, deleted_required_by)
-
-    if Enum.empty?(new_required_by) do
-      remove_node(graph, node_name)
-    else
-      nodes = Map.update!(graph.nodes, node_name, &Node.set_required_by(&1, new_required_by))
-
-      %{graph | nodes: nodes}
-    end
-  end
-
-  defp remove_node_name_from_conflict_groups_if_present(graph, %Node{conflict_groups: []}) do
+  def link_nodes(graph, node_name, required_by, traits)
+      when is_atom(node_name) and is_list(traits) do
     graph
+    |> merge_required_by(node_name, %{required_by => traits})
+    |> require_node(required_by, node_name)
   end
 
-  defp remove_node_name_from_conflict_groups_if_present(
-         graph,
-         %Node{name: node_name_to_remove, conflict_groups: conflict_groups}
-       ) do
-    conflict_groups
-    |> Enum.reduce(graph, fn conflict_group, graph ->
-      node_names_to_update = List.delete(conflict_group, node_name_to_remove)
-
-      new_conflict_group =
-        case node_names_to_update do
-          [_] -> []
-          group -> group
-        end
-
-      unresolved_conflict_groups =
-        List.delete(graph.unresolved_conflict_groups, conflict_group)
-
-      unresolved_conflict_groups =
-        if new_conflict_group == [] do
-          unresolved_conflict_groups
-        else
-          [new_conflict_group | unresolved_conflict_groups]
-        end
-
-      update_node =
-        if new_conflict_group == [] do
-          &Node.remove_conflict_group(&1, conflict_group)
-        else
-          &Node.replace_conflict_group(&1, conflict_group, new_conflict_group)
-        end
-
-      nodes =
-        Enum.reduce(node_names_to_update, graph.nodes, fn node_name, nodes ->
-          Map.update!(nodes, node_name, update_node)
-        end)
-
-      %{graph | nodes: nodes, unresolved_conflict_groups: unresolved_conflict_groups}
-    end)
-  end
-
-  defp unrequire_node_names(nodes, node_name_to_remove, target_node_names) do
-    Enum.reduce(target_node_names, nodes, fn
-      nil, nodes ->
-        nodes
-
-      required_by_node_name, nodes ->
-        if Map.has_key?(nodes, required_by_node_name) do
-          Map.update!(nodes, required_by_node_name, &Node.unrequire_node(&1, node_name_to_remove))
-        else
-          nodes
-        end
-    end)
-  end
-
-  def analyze_conflict_group(%__MODULE__{} = graph, conflict_group_to_analyze) do
-    unresolved_conflict_groups = graph.unresolved_conflict_groups
-    conflict_group_to_analyze_mapset = MapSet.new(conflict_group_to_analyze)
-
-    Enum.find_value(unresolved_conflict_groups, :new_group, fn unresolved_conflict_group ->
-      unresolved_conflict_group_mapset = MapSet.new(unresolved_conflict_group)
-
-      cond do
-        conflict_group_to_analyze == unresolved_conflict_group ->
-          :exists
-
-        MapSet.subset?(conflict_group_to_analyze_mapset, unresolved_conflict_group_mapset) ->
-          {:is_subset,
-           MapSet.difference(unresolved_conflict_group_mapset, conflict_group_to_analyze_mapset)}
-
-        MapSet.subset?(unresolved_conflict_group_mapset, conflict_group_to_analyze_mapset) ->
-          {:contains_subset, unresolved_conflict_group}
-
-        true ->
-          false
-      end
-    end)
+  defp merge_required_by(%__MODULE__{} = graph, node_name, required_by) do
+    nodes = Map.update!(graph.nodes, node_name, &Node.merge_required_by(&1, required_by))
+    %{graph | nodes: nodes}
   end
 
   defp require_node(%__MODULE__{} = graph, node_name, node_name_to_add) do
@@ -227,196 +31,6 @@ defmodule SeedFactory.Requirements.CommandGraph do
     end
   end
 
-  defp merge_required_by(%__MODULE__{} = graph, node_name, required_by) do
-    nodes = Map.update!(graph.nodes, node_name, &Node.merge_required_by(&1, required_by))
-    %{graph | nodes: nodes}
-  end
-
-  defp add_or_link_node(graph, node_name, required_by, traits) when is_atom(required_by) do
-    if Map.has_key?(graph.nodes, node_name) do
-      link_nodes(graph, node_name, required_by, traits)
-    else
-      node = Node.new(%{name: node_name, required_by: %{required_by => traits}})
-
-      add_node(graph, node)
-    end
-  end
-
-  def add_conflict_group(%__MODULE__{} = graph, conflict_group) do
-    nodes =
-      Enum.reduce(conflict_group, graph.nodes, fn node_name, nodes ->
-        Map.update!(nodes, node_name, fn node ->
-          Node.add_conflict_group(node, conflict_group)
-        end)
-      end)
-
-    %{
-      graph
-      | unresolved_conflict_groups: [conflict_group | graph.unresolved_conflict_groups],
-        nodes: nodes
-    }
-  end
-
-  def link_nodes(graph, node_names, required_by, traits)
-      when is_list(node_names) and is_list(traits) do
-    grouped_traits =
-      traits
-      |> Enum.group_by(& &1.exec_step.command_name)
-
-    Enum.reduce(
-      node_names,
-      graph,
-      &link_nodes(&2, &1, required_by, Map.get(grouped_traits, &1, []))
-    )
-  end
-
-  def link_nodes(graph, node_name, required_by, traits)
-      when is_atom(node_name) and is_list(traits) do
-    graph
-    |> merge_required_by(node_name, %{required_by => traits})
-    |> require_node(required_by, node_name)
-  end
-
-  def resolve_conflicts(%__MODULE__{} = graph) do
-    case pop_resolvable_deferred_resolution(graph) do
-      {node_name, graph} ->
-        graph
-        |> resolve_conflicts_in_favour_of_the_node(node_name)
-        |> resolve_conflicts()
-
-      :none ->
-        case graph.unresolved_conflict_groups do
-          [] ->
-            ensure_deferred_requirements_satisfied!(graph)
-
-          [[primary_node_name | _] | _] ->
-            graph
-            |> resolve_conflicts_in_favour_of_the_node(primary_node_name)
-            |> resolve_conflicts()
-        end
-    end
-  end
-
-  defp pop_resolvable_deferred_resolution(%__MODULE__{} = graph) do
-    deferred =
-      Enum.find(graph.deferred_resolutions, fn deferred ->
-        case graph.nodes[deferred.node_name] do
-          nil ->
-            false
-
-          node ->
-            node.conflict_groups != [] and demand_settled?(graph.nodes, deferred.required_by)
-        end
-      end)
-
-    if deferred do
-      {deferred.node_name,
-       %{graph | deferred_resolutions: List.delete(graph.deferred_resolutions, deferred)}}
-    else
-      :none
-    end
-  end
-
-  # The demand may only be applied while the command that expressed it is in the
-  # plan for sure. A dead demander leaves the entry to expire, an unresolved one
-  # leaves it waiting for a later pass.
-  defp demand_settled?(_nodes, nil), do: true
-
-  defp demand_settled?(nodes, required_by_name) do
-    case nodes[required_by_name] do
-      nil ->
-        false
-
-      node ->
-        node.conflict_groups == [] and requirement_settled?(nodes, required_by_name)
-    end
-  end
-
-  defp requirement_settled?(nodes, node_name) do
-    Enum.any?(Map.fetch!(nodes, node_name).required_by, fn {required_by_name, _traits} ->
-      demand_settled?(nodes, required_by_name)
-    end)
-  end
-
-  defp ensure_deferred_requirements_satisfied!(%__MODULE__{} = graph) do
-    Enum.each(graph.deferred_resolutions, fn deferred ->
-      requirement_active? =
-        deferred.required_by == nil or Map.has_key?(graph.nodes, deferred.required_by)
-
-      if requirement_active? and not Map.has_key?(graph.nodes, deferred.node_name) do
-        [trait | _] = deferred.traits
-
-        raise SeedFactory.TraitResolutionError,
-          entity: trait.entity,
-          trait: trait.name,
-          required_by: deferred.required_by,
-          reason: {:commands_rejected, [deferred.node_name]}
-      end
-    end)
-
-    graph
-  end
-
-  defp resolve_conflicts_in_favour_of_the_node(graph, node_name_to_keep) do
-    node = Map.fetch!(graph.nodes, node_name_to_keep)
-
-    all_node_names_in_conflict_groups =
-      node.conflict_groups
-      |> List.flatten()
-      |> Enum.uniq()
-
-    Enum.reduce(
-      all_node_names_in_conflict_groups,
-      graph,
-      fn node_name, graph ->
-        if node_name == node_name_to_keep do
-          graph
-        else
-          remove_node(graph, node_name)
-        end
-      end
-    )
-  end
-
-  defp anything_in_vertical_conflicts?(nodes, node_name) do
-    Enum.any?(Map.fetch!(nodes, node_name).required_by, fn
-      {nil, _traits} ->
-        false
-
-      {node_name, _traits} ->
-        Map.fetch!(nodes, node_name).conflict_groups != [] or
-          anything_in_vertical_conflicts?(nodes, node_name)
-    end)
-  end
-
-  defp auto_resolve_conflict_if_possible_in_favour_of(
-         %__MODULE__{nodes: nodes} = graph,
-         node_name,
-         required_by,
-         traits,
-         origin
-       ) do
-    has_conflict? = Map.fetch!(nodes, node_name).conflict_groups != []
-
-    cond do
-      not has_conflict? ->
-        graph
-
-      not anything_in_vertical_conflicts?(nodes, node_name) ->
-        resolve_conflicts_in_favour_of_the_node(graph, node_name)
-
-      origin == :trait_exec or required_by == nil ->
-        # The demand leaves the command no alternative, but resolving now could
-        # wrongly remove nodes whose own conflicts are not settled yet. Remember
-        # the demand and let resolve_conflicts apply it once it settles.
-        deferred = %{node_name: node_name, required_by: required_by, traits: traits}
-        %{graph | deferred_resolutions: [deferred | graph.deferred_resolutions]}
-
-      true ->
-        graph
-    end
-  end
-
   def delete_explicitly_requested_nodes(graph) do
     Enum.reduce(graph.nodes, graph, fn {node_name, node}, acc ->
       if Node.requested_explicitly?(node) do
@@ -427,6 +41,9 @@ defmodule SeedFactory.Requirements.CommandGraph do
     end)
   end
 
+  # Deliberately leaves required_by entries pointing at the deleted nodes:
+  # resolved_args reads the trait args they carry when the kept dependencies
+  # are executed. Consumers of the graph must skip dead references instead.
   defp remove_node_unsafe(graph, node_name_to_delete)
        when is_atom(node_name_to_delete) do
     case graph.nodes[node_name_to_delete] do
@@ -495,9 +112,10 @@ defmodule SeedFactory.Requirements.CommandGraph do
     end
   end
 
-  # Conflict resolution can remove the producer a node was linked to while another
-  # producer of the same entity survives in the plan. Without a fresh edge the
-  # execution order between them is left to the topological sort tie-break.
+  # The solver links every demand to a producer, so this pass matters only for
+  # graphs it could not fully link (a command supplying its own parameter in
+  # the relaxed diagnosis pass): the safety net below turns such plans into a
+  # loud error instead of an execution crash.
   def link_producers_of_required_entities(%__MODULE__{} = graph, context) do
     Enum.reduce(graph.nodes, graph, fn {node_name, node}, graph ->
       command = SeedFactory.Context.fetch_command!(context, node_name)
@@ -507,49 +125,47 @@ defmodule SeedFactory.Requirements.CommandGraph do
       |> Enum.reduce(graph, fn entity_name, graph ->
         binding_name = SeedFactory.Context.binding_name(context, entity_name)
 
-        live_producers =
-          if Map.has_key?(context, binding_name) do
-            []
-          else
+        if Map.has_key?(context, binding_name) do
+          graph
+        else
+          live_producers =
             context
             |> SeedFactory.Context.fetch_command_names_by_entity!(entity_name)
             |> Enum.filter(&(&1 != node_name and Map.has_key?(graph.nodes, &1)))
-          end
 
-        if live_producers == [] or Enum.any?(live_producers, &(&1 in node.requires)) do
-          graph
-        else
-          link_nodes(graph, live_producers, node_name, [])
+          cond do
+            live_producers == [] ->
+              # Guaranteed crash at execution. The solver raises during
+              # planning already, so this is a safety net for paths it does
+              # not track.
+              raise SeedFactory.UnproducibleEntityError,
+                entity: entity_name,
+                required_by: node_name,
+                commands:
+                  SeedFactory.Context.fetch_command_names_by_entity!(context, entity_name),
+                cause: :not_planned
+
+            Enum.any?(live_producers, &(&1 in node.requires)) ->
+              graph
+
+            true ->
+              Enum.reduce(live_producers, graph, &link_nodes(&2, &1, node_name, []))
+          end
         end
       end)
     end)
   end
 
   def deprioritize_nodes_that_delete_entities_or_remove_traits(graph, context) do
-    nodes = graph.nodes
-
-    Enum.reduce(nodes, graph, fn {node_name, graph_node}, graph ->
+    Enum.reduce(Map.keys(graph.nodes), graph, fn node_name, graph ->
       command = SeedFactory.Context.fetch_command!(context, node_name)
 
-      sibling_node_names =
-        graph_node.requires
-        |> Enum.flat_map(fn requires_node_name ->
-          Map.keys(Map.fetch!(nodes, requires_node_name).required_by)
-        end)
-        |> Enum.uniq()
-        |> Enum.reject(&(&1 in [nil, node_name]))
-
-      node_names_that_delete_entities =
+      consumers_of_deleted_entities =
         Enum.flat_map(command.deleting_instructions, fn %{entity: entity} ->
-          Enum.filter(sibling_node_names, fn sibling ->
-            Map.has_key?(
-              SeedFactory.Context.fetch_command!(context, sibling).required_entities,
-              entity
-            )
-          end)
+          consumer_node_names(graph, context, node_name, entity, nil)
         end)
 
-      node_names_that_remove_traits =
+      consumers_of_removed_traits =
         Enum.flat_map(command.updating_instructions, fn %{entity: entity} ->
           potentially_removes_traits =
             (SeedFactory.Context.get_traits(context, entity)[:by_command_name][command.name] ||
@@ -557,26 +173,74 @@ defmodule SeedFactory.Requirements.CommandGraph do
             |> Enum.flat_map(&List.wrap(&1.from))
             |> MapSet.new()
 
-          Enum.filter(sibling_node_names, fn sibling ->
-            case Map.fetch(
-                   SeedFactory.Context.fetch_command!(context, sibling).required_entities,
-                   entity
-                 ) do
-              {:ok, required_entities} ->
-                required_entities
-                |> MapSet.intersection(potentially_removes_traits)
-                |> Enum.any?()
-
-              :error ->
-                false
-            end
-          end)
+          consumer_node_names(graph, context, node_name, entity, potentially_removes_traits)
         end)
 
-      node_names_to_link =
-        node_names_that_delete_entities ++ node_names_that_remove_traits
+      graph =
+        Enum.reduce(
+          consumers_of_deleted_entities ++ consumers_of_removed_traits,
+          graph,
+          fn consumer, graph -> link_unless_ordered(graph, consumer, node_name) end
+        )
 
-      link_nodes(graph, node_names_to_link, node_name, [])
+      # An entity sitting in the context is its first instance: a command
+      # re-producing it can only run after the deleter that removes it.
+      reproducers_of_deleted_entities =
+        for %{entity: entity} <- command.deleting_instructions,
+            SeedFactory.Context.entity_exists?(context, entity),
+            reproducer <- Map.keys(graph.nodes),
+            reproducer != node_name,
+            Enum.any?(
+              SeedFactory.Context.fetch_command!(context, reproducer).producing_instructions,
+              &(&1.entity == entity)
+            ),
+            do: reproducer
+
+      Enum.reduce(reproducers_of_deleted_entities, graph, fn reproducer, graph ->
+        link_unless_ordered(graph, node_name, reproducer)
+      end)
     end)
+  end
+
+  # Nodes whose command requires the entity, regardless of shared plan nodes:
+  # a consumer of an entity that already sits in the context has no plan edge
+  # for it, yet still has to run before the entity's deleter. With a trait
+  # set given, only consumers requiring one of those traits count.
+  defp consumer_node_names(graph, context, node_name, entity, trait_names) do
+    for name <- Map.keys(graph.nodes),
+        name != node_name,
+        required_traits =
+          Map.get(SeedFactory.Context.fetch_command!(context, name).required_entities, entity),
+        required_traits != nil,
+        trait_names == nil or Enum.any?(MapSet.intersection(required_traits, trait_names)),
+        do: name
+  end
+
+  # Orders `then_name` after `first_name` unless the graph already orders them
+  # the other way, as a legitimate interleave chain does with the consumer of
+  # a re-produced instance.
+  defp link_unless_ordered(graph, first_name, then_name) do
+    if requires_transitively?(graph.nodes, first_name, then_name) do
+      graph
+    else
+      link_nodes(graph, first_name, then_name, [])
+    end
+  end
+
+  defp requires_transitively?(nodes, from, target) do
+    walk_requires([from], nodes, target, MapSet.new())
+  end
+
+  defp walk_requires([], _nodes, _target, _seen), do: false
+
+  defp walk_requires([name | rest], nodes, target, seen) do
+    deps = Map.fetch!(nodes, name).requires
+
+    if MapSet.member?(deps, target) do
+      true
+    else
+      new = MapSet.difference(deps, seen)
+      walk_requires(MapSet.to_list(new) ++ rest, nodes, target, MapSet.union(seen, new))
+    end
   end
 end
