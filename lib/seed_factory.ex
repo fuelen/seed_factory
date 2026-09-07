@@ -205,7 +205,7 @@ defmodule SeedFactory do
   #     trails: %{
   #       company: #trail[:create_company],
   #       profile: #trail[:create_user],
-  #       user: #trail[create_user: +[:pending, :admin] -> activate_user: +[:active] -[:pending]]
+  #       user: #trail[create_user: +[:admin, :pending] -> activate_user: +[:active] -[:pending]]
   #     },
   #     execution_history: [
   #       #execution[produce(user: [:admin, :active]): create_company → create_user → activate_user]
