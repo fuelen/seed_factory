@@ -1,5 +1,7 @@
 defmodule SeedFactory.SchemaTest do
-  use ExUnit.Case, async: true
+  # Captures :stderr while compiling schemas, which ExUnit cannot isolate
+  # between concurrent test modules.
+  use ExUnit.Case, async: false
 
   setup do
     debug_info? = Code.get_compiler_option(:debug_info)
