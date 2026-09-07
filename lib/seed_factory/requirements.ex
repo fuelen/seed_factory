@@ -1,6 +1,18 @@
 defmodule SeedFactory.Requirements do
   @moduledoc false
 
+  # The planning core behind produce, pre_produce, exec and pre_exec. A request
+  # becomes a plan in four stages:
+  #
+  #   1. `CandidateGraph` collects everything the request may need into an
+  #      AND/OR graph, recording context-dependent facts without resolving;
+  #   2. `Solver` searches that graph for a consistent plan, deterministically,
+  #      and materializes it into a `CommandGraph`;
+  #   3. `apply_to_context/2` fixes the arguments of every step before anything
+  #      runs, and `TraitDelivery` predicts with them that every requested
+  #      trait survives the plan;
+  #   4. the steps run in topological order with those arguments.
+
   alias SeedFactory.Context
   alias SeedFactory.Params
   alias SeedFactory.Requirements.CommandGraph

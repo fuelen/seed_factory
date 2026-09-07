@@ -46,6 +46,9 @@ defmodule SeedFactory.Requirements.Solver do
   # passes report it — usually the topological sort with the cycle, or the
   # link_producers safety net when a command supplied its own parameter. When
   # both passes fail, the first dead end of the strict pass is raised.
+  #
+  # There is no search budget: a pathological schema can keep the search
+  # running long, and nothing cuts it short.
 
   alias SeedFactory.Params
   alias SeedFactory.Requirements.CandidateGraph
