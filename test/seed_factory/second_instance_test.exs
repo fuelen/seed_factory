@@ -82,30 +82,31 @@ defmodule SeedFactory.SecondInstanceTest do
 
   import TraitAssertions
 
-  test "produce with :as raises EntityAlreadyExistsError until all sibling entities are rebound",
+  test "produce with :as refuses the plan until all sibling entities are rebound",
        context do
     context = produce(context, contract: [:extended, :notarized])
 
     assert_trait(context, :contract, [:extended, :notarized])
 
+    # :contract_copy is not rebound, so every command producing :contract
+    # would duplicate it and the plan is refused.
     error =
-      assert_raise SeedFactory.EntityAlreadyExistsError, fn ->
+      assert_raise SeedFactory.UnproducibleEntityError, fn ->
         produce(context, contract: [:extended, :notarized, as: :contract2])
       end
 
-    assert error.entity == :contract_copy
-    assert error.command == :sign_contract
+    assert error.entity == :contract
+    assert error.commands == [:sign_contract, :import_contract]
 
     error =
-      assert_raise SeedFactory.EntityAlreadyExistsError, fn ->
+      assert_raise SeedFactory.TraitResolutionError, fn ->
         produce(context,
           contract: [:extended, :notarized, as: :contract2],
           contract_copy: :contract_copy2
         )
       end
 
-    assert error.entity == :approval
-    assert error.command == :approve_contract
+    assert error.trait == :extended
 
     context =
       produce(context,
@@ -124,19 +125,19 @@ defmodule SeedFactory.SecondInstanceTest do
     assert_trait(context, :contract2, [:extended, :notarized])
   end
 
-  test "produce with rebinding raises EntityAlreadyExistsError when every producing command would duplicate an existing entity",
+  test "produce with rebinding refuses the plan when every producing command would duplicate an existing entity",
        context do
     context = produce(context, :contract)
 
     assert context.contract == "signed contract"
 
     error =
-      assert_raise SeedFactory.EntityAlreadyExistsError, fn ->
+      assert_raise SeedFactory.UnproducibleEntityError, fn ->
         produce(context, contract: :contract2)
       end
 
-    assert error.entity == :contract_copy
-    assert error.command == :sign_contract
+    assert error.entity == :contract
+    assert error.commands == [:sign_contract, :import_contract]
   end
 
   # :notary is rebound without being requested, so :appoint_notary can enter the
@@ -145,7 +146,7 @@ defmodule SeedFactory.SecondInstanceTest do
     context = produce(context, contract: [:extended])
 
     error =
-      assert_raise SeedFactory.EntityAlreadyExistsError, fn ->
+      assert_raise SeedFactory.TraitResolutionError, fn ->
         rebind(context, [notary: :notary2], fn context ->
           produce(context,
             contract: [:extended, as: :contract2],
@@ -154,7 +155,11 @@ defmodule SeedFactory.SecondInstanceTest do
         end)
       end
 
-    assert error.entity == :approval
-    assert error.command == :approve_contract
+    assert error.message == """
+           cannot satisfy trait :extended for entity :contract (requested trait)
+           - candidate command :extend_contract was previously rejected during conflict resolution
+           - prerequisite trait :approved required by :extended cannot be satisfied
+             - candidate command :approve_contract was previously rejected during conflict resolution\
+           """
   end
 end

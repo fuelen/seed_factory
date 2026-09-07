@@ -176,29 +176,11 @@ defmodule SeedFactory.Requirements.CommandGraph do
           consumer_node_names(graph, context, node_name, entity, potentially_removes_traits)
         end)
 
-      graph =
-        Enum.reduce(
-          consumers_of_deleted_entities ++ consumers_of_removed_traits,
-          graph,
-          fn consumer, graph -> link_unless_ordered(graph, consumer, node_name) end
-        )
-
-      # An entity sitting in the context is its first instance: a command
-      # re-producing it can only run after the deleter that removes it.
-      reproducers_of_deleted_entities =
-        for %{entity: entity} <- command.deleting_instructions,
-            SeedFactory.Context.entity_exists?(context, entity),
-            reproducer <- Map.keys(graph.nodes),
-            reproducer != node_name,
-            Enum.any?(
-              SeedFactory.Context.fetch_command!(context, reproducer).producing_instructions,
-              &(&1.entity == entity)
-            ),
-            do: reproducer
-
-      Enum.reduce(reproducers_of_deleted_entities, graph, fn reproducer, graph ->
-        link_unless_ordered(graph, node_name, reproducer)
-      end)
+      Enum.reduce(
+        consumers_of_deleted_entities ++ consumers_of_removed_traits,
+        graph,
+        fn consumer, graph -> link_unless_ordered(graph, consumer, node_name) end
+      )
     end)
   end
 

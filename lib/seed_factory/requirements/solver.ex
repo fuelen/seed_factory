@@ -3,8 +3,9 @@ defmodule SeedFactory.Requirements.Solver do
 
   # Searches the candidate graph for a consistent plan: one command per active
   # demand such that no two chosen commands produce a common entity (unless a
-  # chosen deleter runs between them), the chosen set is orderable, and every
-  # demand of a chosen command is satisfied in turn.
+  # chosen deleter runs between them; an entity already sitting in the context
+  # counts as produced before the plan starts), the chosen set is orderable,
+  # and every demand of a chosen command is satisfied in turn.
   #
   # The search is depth-first with chronological backtracking. The order of
   # decisions is the determinism spec:
@@ -50,6 +51,11 @@ defmodule SeedFactory.Requirements.Solver do
   alias SeedFactory.Requirements.CommandGraph
   alias SeedFactory.Requirements.CommandGraph.Node
   alias SeedFactory.Requirements.Restrictions
+
+  # The virtual first producer of an entity already sitting in the context:
+  # it joins interleave sequences in the leaf check but is not a command, so
+  # it never carries an edge and never reaches an error message.
+  @context_instance :__context_instance__
 
   def build_graph(context, entities_with_trait_names) do
     restrictions = Restrictions.new(context, entities_with_trait_names)
@@ -227,7 +233,9 @@ defmodule SeedFactory.Requirements.Solver do
               not MapSet.member?(state.chosen, cmd),
               not MapSet.member?(state.excluded, cmd),
               command_collection_failure(state.cg, cmd) == nil,
-              phantom?(state, demander, cmd) or not produce_conflict?(state, cmd),
+              phantom?(state, demander, cmd) or
+                (not produce_conflict?(state, cmd) and
+                   not self_consuming_producer?(state, cmd)),
               not deletes_protected?(state, cmd),
               cycle_ok?(state, demander, cmd) do
             {:choose, cmd, edge_traits(node, preferred?, cmd)}
@@ -271,7 +279,8 @@ defmodule SeedFactory.Requirements.Solver do
                 not MapSet.member?(state.excluded, decl.command),
                 command_collection_failure(state.cg, decl.command) == nil,
                 phantom?(state, demander, decl.command) or
-                  not produce_conflict?(state, decl.command),
+                  (not produce_conflict?(state, decl.command) and
+                     not self_consuming_producer?(state, decl.command)),
                 not deletes_protected?(state, decl.command),
                 cycle_ok?(state, demander, decl.command) do
               {:decl, decl, :choose}
@@ -364,14 +373,35 @@ defmodule SeedFactory.Requirements.Solver do
     end)
   end
 
+  # An entity already sitting in the context counts as produced before the
+  # plan starts, so a command re-producing it needs a deleter just like a
+  # second producer does.
   defp produce_conflict?(state, cmd) do
     state.cg.commands
     |> Map.fetch!(cmd)
     |> Map.fetch!(:produces)
     |> Enum.any?(fn entity ->
       others = Map.get(state.producers, entity, []) -- [cmd]
-      others != [] and reachable_deleters(state, entity) == []
+
+      (others != [] or context_instance?(state, entity)) and
+        reachable_deleters(state, entity) == []
     end)
+  end
+
+  defp context_instance?(state, entity) do
+    SeedFactory.Context.entity_exists?(state.cg.context, entity)
+  end
+
+  # A command producing an entity it also consumes can never run as a plan
+  # node: its parameter needs a live instance, its produce needs none, and the
+  # DSL forbids deleting the same entity in the same command. Such a command
+  # is executable only through exec with the parameter covered by the initial
+  # input. A phantom never executes, so the check does not apply to it.
+  defp self_consuming_producer?(state, cmd) do
+    node = Map.fetch!(state.cg.commands, cmd)
+    param_entities = MapSet.new(node.params, & &1.entity)
+
+    Enum.any?(node.produces, &MapSet.member?(param_entities, &1))
   end
 
   # Only deleters that can end up in the plan legalize a second producer: they
@@ -770,22 +800,50 @@ defmodule SeedFactory.Requirements.Solver do
 
   # The leaf: several chosen commands producing one entity are legal only when
   # every chosen deleter of that entity fits between two of its producers, in
-  # an order compatible with the dependencies. The sequence chosen for one
-  # entity constrains the others, so the entities are ordered by a joint
-  # backtracking search. The ordering edges become part of the plan.
+  # an order compatible with the dependencies. An entity already sitting in
+  # the context joins as a virtual first producer pinned to the head of the
+  # sequence. The sequence chosen for one entity constrains the others, so the
+  # entities are ordered by a joint backtracking search. The ordering edges
+  # become part of the plan.
   defp leaf_check(state) do
-    multi = for {entity, [_, _ | _] = producers} <- state.producers, do: {entity, producers}
+    # A single chosen producer with several chosen deleters has nothing to
+    # interleave, but the count check below still has to refuse it.
+    multi =
+      for {entity, [_ | _] = producers} <- state.producers,
+          producers = with_context_instance(state, entity, producers),
+          match?([_, _ | _], producers) or several_chosen_deleters?(state, entity),
+          do: {entity, producers}
 
-    case order_multi_producers(state, multi, state.extra_edges) do
+    # A context instance with several chosen deleters and no re-producer is
+    # over-deleted: only the first deleter would find it alive.
+    producerless =
+      for {entity, _deleters} <- state.cg.deleters_by_entity,
+          not Map.has_key?(state.producers, entity),
+          context_instance?(state, entity),
+          several_chosen_deleters?(state, entity),
+          do: {entity, [@context_instance]}
+
+    case order_multi_producers(state, multi ++ producerless, state.extra_edges) do
       {:ok, edges} ->
         {:ok, %{state | extra_edges: edges}}
 
-      {:unorderable, entity, producers} ->
+      {:unorderable, entity, [@context_instance], deleters} ->
         exception =
           SeedFactory.UnproducibleEntityError.exception(
             entity: entity,
             required_by: nil,
-            commands: producers
+            commands: deleters,
+            cause: :over_deleted
+          )
+
+        {:fail, %{kind: :other, exception: exception}}
+
+      {:unorderable, entity, producers, _deleters} ->
+        exception =
+          SeedFactory.UnproducibleEntityError.exception(
+            entity: entity,
+            required_by: nil,
+            commands: producers -- [@context_instance]
           )
 
         {:fail, %{kind: :other, exception: exception}}
@@ -795,42 +853,76 @@ defmodule SeedFactory.Requirements.Solver do
   defp order_multi_producers(_state, [], edges), do: {:ok, edges}
 
   defp order_multi_producers(state, [{entity, producers} | rest], edges) do
-    deleters =
-      state.cg.deleters_by_entity
-      |> Map.get(entity, [])
-      |> Enum.filter(fn cmd ->
-        MapSet.member?(state.chosen, cmd) and not MapSet.member?(state.phantoms, cmd)
-      end)
+    deleters = chosen_deleters(state, Map.get(state.cg.deleters_by_entity, entity, []))
+    unorderable = {:unorderable, entity, producers, deleters}
 
     case consistent_sequences(state, producers, deleters, edges) do
       [] ->
-        {:unorderable, entity, producers}
+        unorderable
 
       sequences ->
-        Enum.reduce_while(sequences, {:unorderable, entity, producers}, fn sequence, _failure ->
+        Enum.reduce_while(sequences, unorderable, fn sequence, _failure ->
           case order_multi_producers(
                  state,
                  rest,
                  edges ++ consecutive_edges(sequence, edges, state)
                ) do
             {:ok, _} = ok -> {:halt, ok}
-            {:unorderable, _, _} = failure -> {:cont, failure}
+            {:unorderable, _, _, _} = failure -> {:cont, failure}
           end
         end)
     end
   end
 
+  defp chosen_deleters(state, deleters) do
+    Enum.filter(deleters, fn cmd ->
+      MapSet.member?(state.chosen, cmd) and not MapSet.member?(state.phantoms, cmd)
+    end)
+  end
+
+  defp several_chosen_deleters?(state, entity) do
+    deleters = Map.get(state.cg.deleters_by_entity, entity, [])
+    match?([_, _ | _], chosen_deleters(state, deleters))
+  end
+
+  defp with_context_instance(state, entity, producers) do
+    if context_instance?(state, entity) do
+      [@context_instance | producers]
+    else
+      producers
+    end
+  end
+
   defp consistent_sequences(state, producers, deleters, edges) do
-    if length(deleters) == length(producers) - 1 do
-      for ordered_producers <- permutations(producers),
+    {head, permutable} =
+      case producers do
+        [@context_instance | rest] -> {[@context_instance], rest}
+        producers -> {[], producers}
+      end
+
+    producer_count = length(producers)
+    deleter_count = length(deleters)
+
+    # A chain anchored at the context instance may also end with a trailing
+    # deleter: the final context simply loses the entity (a requested one is
+    # protected long before this point). A chain of chosen producers only
+    # supports the produce → delete → … → produce form.
+    allowed? =
+      deleter_count == producer_count - 1 or
+        (head != [] and deleter_count == producer_count)
+
+    if allowed? do
+      for ordered_producers <- permutations(permutable),
           ordered_deleters <- permutations(deleters),
-          sequence = interleave(ordered_producers, ordered_deleters),
+          sequence = interleave(head ++ ordered_producers, ordered_deleters),
           sequence_consistent?(state, sequence, edges),
           do: sequence
     else
       []
     end
   end
+
+  defp interleave([], []), do: []
 
   defp interleave([producer | producers], deleters) do
     case deleters do
@@ -862,13 +954,14 @@ defmodule SeedFactory.Requirements.Solver do
         do: {before_cmd, after_cmd}
   end
 
+  # The virtual context instance is not a command, so it carries no edge.
   defp consecutive_edges(sequence, acc, state) do
     requires = requires_with_extra_edges(state, acc)
 
     sequence
     |> Enum.zip(tl(sequence))
     |> Enum.reject(fn {before_cmd, after_cmd} ->
-      reaches?(requires, after_cmd, before_cmd)
+      before_cmd == @context_instance or reaches?(requires, after_cmd, before_cmd)
     end)
   end
 

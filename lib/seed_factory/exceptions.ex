@@ -454,11 +454,13 @@ defmodule SeedFactory.UnproducibleEntityError do
     required_by_part = if required_by, do: " required by #{inspect(required_by)}", else: ""
 
     # :not_planned lists candidates that may have never entered the plan, so it
-    # must not claim they were rejected.
+    # must not claim they were rejected. :over_deleted lists the deleters that
+    # cannot share the single context instance.
     cause_part =
       case cause do
         :rejected -> "all commands able to produce it were rejected during conflict resolution: "
         :not_planned -> "no command able to produce it is part of the execution plan: "
+        :over_deleted -> "it sits in the context once, but the plan deletes it more than once: "
       end
 
     message =
