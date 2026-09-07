@@ -137,8 +137,15 @@ defmodule SeedFactory.TraitRestrictionConflictError do
     requested_traits = Keyword.fetch!(opts, :requested_traits)
 
     message =
-      "cannot apply traits #{inspect(traits)} to #{inspect(binding)} as a requirement for #{inspect(required_by)} command, " <>
-        "the entity was requested with the following traits: #{inspect(requested_traits)}"
+      case required_by do
+        nil ->
+          "cannot apply traits #{inspect(traits)} to #{inspect(binding)}, requested with the traits " <>
+            "#{inspect(requested_traits)}: applying them would replace a requested trait"
+
+        command ->
+          "cannot apply traits #{inspect(traits)} to #{inspect(binding)} as a requirement for #{inspect(command)} command, " <>
+            "the entity was requested with the following traits: #{inspect(requested_traits)}"
+      end
 
     %__MODULE__{
       message: message,
