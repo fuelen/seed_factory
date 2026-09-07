@@ -235,3 +235,14 @@ IO.inspect(ctx.__seed_factory_meta__)
 #   ...
 # >
 ```
+
+## Development
+
+```sh
+mix test               # the suite
+mix test --only stress # the stress tier: 13 generators, about 4,000 schemas
+mix coveralls          # coverage
+```
+
+`test/stress/README.md` describes the generators, their dumps and the
+differential comparison against a previous release.
