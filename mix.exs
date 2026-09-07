@@ -22,7 +22,8 @@ defmodule SeedFactory.MixProject do
       ],
       test_coverage: [
         tool: ExCoveralls
-      ]
+      ],
+      test_ignore_filters: [~r"^test/stress/scripts/"]
     ]
   end
 
