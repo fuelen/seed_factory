@@ -31,7 +31,10 @@ defmodule SeedFactory.Schema do
   ### Options
 
   * `:value` - a static default value. Applied by default as `value: nil`.
-  * `:generate` - a zero-arity function that generates data.
+  * `:generate` - a zero-arity function that generates data. For the commands of a plan it
+    runs once while the plan is built, before any command executes, and the execution reuses
+    the value. Keep it to producing a value (random data, a counter): no writes to a database
+    or a file.
   * `:entity` - refers to an entity within the context. If the entity is not in the context,
     SeedFactory will automatically execute a command that produces it.
   * `:with_traits` - a list of trait names. Requires `:entity` option.
@@ -235,6 +238,14 @@ defmodule SeedFactory.Schema do
   * `:generate_args` - a function that generates a map with args satisfying `:args_match`. Must be used with `:args_match`.
 
   `:args_pattern` is a simpler alternative to the `:args_match` + `:generate_args` combination.
+
+  `:generate_args` runs once while the plan is built, before any command executes, and the
+  execution reuses the generated args. Keep it to producing values (random data, a counter):
+  no writes to a database or a file. The plan also calls `:args_match` on the args it has
+  fixed, to predict which declarations fire and refuse a plan that would lose a requested
+  trait before the first command after which the trait cannot come back. A function reading
+  the instance of an entity the plan itself produces is called only once every instance it
+  reads is final.
 
   ```elixir
   # all three instructions below are equal

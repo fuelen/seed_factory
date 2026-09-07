@@ -189,6 +189,52 @@ defmodule SeedFactory.TraitPathNotFoundError do
   defp format_binding(entity, binding), do: "#{inspect(binding)} (entity #{inspect(entity)})"
 end
 
+defmodule SeedFactory.MissingRequestedTraitError do
+  defexception [:message, :entity, :binding, :trait, :removed_by, :removed_when]
+
+  # Raised by the prediction of the requested traits' delivery, before the
+  # first step after which the trait cannot come back. `removed_when` says
+  # whether the remover is a planned step or one this plan already ran while
+  # a later re-add was still uncertain.
+  def exception(opts) when is_list(opts) do
+    entity = Keyword.fetch!(opts, :entity)
+    binding = Keyword.fetch!(opts, :binding)
+    trait = Keyword.fetch!(opts, :trait)
+    removed_by = Keyword.fetch!(opts, :removed_by)
+    removed_when = Keyword.fetch!(opts, :removed_when)
+
+    binding_label = format_binding(entity, binding)
+
+    cause =
+      case {removed_by, removed_when} do
+        {nil, _} ->
+          "no planned command applies it"
+
+        {command, :planned} ->
+          "command #{inspect(command)} removes it"
+
+        {command, :executed} ->
+          "command #{inspect(command)} removed it and no later planned command applies it"
+      end
+
+    message =
+      "requested trait #{inspect(trait)} would be missing on #{binding_label} after the plan: " <>
+        cause
+
+    %__MODULE__{
+      message: message,
+      entity: entity,
+      binding: binding,
+      trait: trait,
+      removed_by: removed_by,
+      removed_when: removed_when
+    }
+  end
+
+  defp format_binding(entity, binding) when entity == binding, do: inspect(binding)
+  defp format_binding(entity, binding), do: "#{inspect(binding)} (entity #{inspect(entity)})"
+end
+
 defmodule SeedFactory.TraitRemovedByCommandError do
   defexception [:message, :entity, :binding, :removed_traits, :command, :current_traits]
 
@@ -461,16 +507,16 @@ defmodule SeedFactory.RejectionReason do
     "transitively requires #{inspect(demander)}, which would form a cycle"
   end
 
-  def clause(:lost_trait_resolution) do
-    "lost the resolution of another trait in this plan"
-  end
-
   def clause(:own_trait_demand) do
     "demands the trait it provides"
   end
 
   def clause(:prerequisite_failed) do
     "failed on the prerequisites below"
+  end
+
+  def clause({:lost_to, trait, winner}) do
+    "lost the #{inspect(trait)} resolution to #{inspect(winner)} in this plan"
   end
 
   def clause({:collection, exception}) do

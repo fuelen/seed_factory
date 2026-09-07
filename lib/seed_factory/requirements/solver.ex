@@ -47,26 +47,30 @@ defmodule SeedFactory.Requirements.Solver do
   # link_producers safety net when a command supplied its own parameter. When
   # both passes fail, the first dead end of the strict pass is raised.
 
+  alias SeedFactory.Params
   alias SeedFactory.Requirements.CandidateGraph
   alias SeedFactory.Requirements.CommandGraph
   alias SeedFactory.Requirements.CommandGraph.Node
   alias SeedFactory.Requirements.Restrictions
+  alias SeedFactory.Trait
 
   # The virtual first producer of an entity already sitting in the context:
   # it joins interleave sequences in the leaf check but is not a command, so
   # it never carries an edge and never reaches an error message.
   @context_instance :__context_instance__
 
+  # Every build returns the plan and the top-level request it serves, as
+  # `{entity, trait_names}` pairs, so the execution can check the delivery.
   def build_graph(context, entities_with_trait_names) do
     restrictions = Restrictions.new(context, entities_with_trait_names)
     candidate_graph = CandidateGraph.new(context, restrictions, entities_with_trait_names)
-    solve_and_materialize(candidate_graph, :produce)
+    {solve_and_materialize(candidate_graph, :produce), requested(candidate_graph)}
   end
 
   def build_graph_for_pre_produce(context, entities_with_trait_names) do
     restrictions = Restrictions.new(context, entities_with_trait_names)
     candidate_graph = CandidateGraph.new(context, restrictions, entities_with_trait_names)
-    solve_and_materialize(candidate_graph, :pre_produce)
+    {solve_and_materialize(candidate_graph, :pre_produce), requested(candidate_graph)}
   end
 
   def build_graph_for_command(context, command, initial_input) do
@@ -75,7 +79,11 @@ defmodule SeedFactory.Requirements.Solver do
     candidate_graph =
       CandidateGraph.new(context, restrictions, [{:command, command, initial_input}])
 
-    solve_and_materialize(candidate_graph, :produce)
+    {solve_and_materialize(candidate_graph, :produce), requested(candidate_graph)}
+  end
+
+  defp requested(candidate_graph) do
+    Enum.map(candidate_graph.request, &{&1.entity, &1.trait_names})
   end
 
   defp solve_and_materialize(candidate_graph, mode) do
@@ -100,7 +108,7 @@ defmodule SeedFactory.Requirements.Solver do
       candidate_graph: candidate_graph,
       pre_produce?: pre_produce?,
       chosen: MapSet.new(),
-      excluded: MapSet.new(),
+      lost: MapSet.new(),
       phantoms: MapSet.new(),
       edges: [],
       requires: %{},
@@ -204,7 +212,7 @@ defmodule SeedFactory.Requirements.Solver do
     else
       candidates =
         if preferred? do
-          node.preferred_candidates
+          preferred_candidates(state, node)
         else
           node.candidates
         end
@@ -215,12 +223,12 @@ defmodule SeedFactory.Requirements.Solver do
         end)
 
       if reuse do
-        {:options, [{:reuse, reuse, edge_traits(node, preferred?, reuse)}]}
+        {:options, [{:reuse, reuse, edge_traits(state, node, preferred?, reuse)}]}
       else
         viable =
           for cmd <- candidates,
               viability_failure(state, demander, cmd) == nil,
-              do: {:choose, cmd, edge_traits(node, preferred?, cmd)}
+              do: {:choose, cmd, edge_traits(state, node, preferred?, cmd)}
 
         case viable do
           [] -> {:zero, entity_failure(state, demand, candidates)}
@@ -244,8 +252,10 @@ defmodule SeedFactory.Requirements.Solver do
         {:zero, %{kind: :other, exception: exception}}
 
       :continue ->
+        declarations = Enum.reject(node.declarations, &lost?(state, &1))
+
         reuse =
-          Enum.find(node.declarations, fn decl ->
+          Enum.find(declarations, fn decl ->
             decl.command != demander and MapSet.member?(state.chosen, decl.command) and
               cycle_ok?(state, demander, decl.command)
           end)
@@ -254,7 +264,7 @@ defmodule SeedFactory.Requirements.Solver do
           {:options, [{:decl, reuse, :reuse}]}
         else
           viable =
-            for decl <- node.declarations,
+            for decl <- declarations,
                 decl.command != demander,
                 viability_failure(state, demander, decl.command) == nil,
                 do: {:decl, decl, :choose}
@@ -328,12 +338,35 @@ defmodule SeedFactory.Requirements.Solver do
     MapSet.new(hard ++ soft)
   end
 
-  defp edge_traits(node, preferred?, cmd) do
+  # The requested traits' declarations of the command ride the edge of an
+  # entity demand without traits of its own, minus the declarations that lost
+  # their trait's resolution: the winner applies the trait, not them.
+  defp edge_traits(state, node, preferred?, cmd) do
     if preferred? do
-      Map.get(node.traits_by_command, cmd, [])
+      live_declarations(state, node, cmd)
     else
       []
     end
+  end
+
+  # A command stays preferred for the entity while one of the declarations
+  # that made it preferred is still in the running; otherwise it falls back
+  # to its place in the declaration order.
+  defp preferred_candidates(state, node) do
+    preferred =
+      Enum.filter(node.preferred_candidates, &(live_declarations(state, node, &1) != []))
+
+    preferred ++ (node.candidates -- preferred)
+  end
+
+  defp live_declarations(state, node, cmd) do
+    node.traits_by_command
+    |> Map.get(cmd, [])
+    |> Enum.reject(&MapSet.member?(state.lost, {&1.entity, &1.name, cmd}))
+  end
+
+  defp lost?(state, decl) do
+    MapSet.member?(state.lost, {decl.trait.entity, decl.trait.name, decl.command})
   end
 
   defp command_collection_failure(candidate_graph, cmd) do
@@ -391,9 +424,6 @@ defmodule SeedFactory.Requirements.Solver do
   # check refused it, which happens only on a cycle: the cycle arm reports it.
   defp viability_failure(state, demander, cmd) do
     cond do
-      MapSet.member?(state.excluded, cmd) ->
-        :lost_trait_resolution
-
       exception = command_collection_failure(state.candidate_graph, cmd) ->
         {:collection, exception}
 
@@ -535,6 +565,7 @@ defmodule SeedFactory.Requirements.Solver do
       for {{entity, _name}, node} <- state.candidate_graph.traits,
           node.status == :continue,
           decl <- node.declarations,
+          not lost?(state, decl),
           MapSet.member?(live, decl.command),
           demand <- prerequisite_demands(entity, decl),
           do: demand
@@ -608,6 +639,7 @@ defmodule SeedFactory.Requirements.Solver do
       :continue ->
         for decl <- node.declarations,
             decl.command != demander,
+            not lost?(state, decl),
             candidate_live?(state, decl.command),
             do: decl.command
 
@@ -626,7 +658,6 @@ defmodule SeedFactory.Requirements.Solver do
 
   defp candidate_live?(state, cmd) do
     not MapSet.member?(state.chosen, cmd) and
-      not MapSet.member?(state.excluded, cmd) and
       command_collection_failure(state.candidate_graph, cmd) == nil and
       not produce_conflict?(state, cmd) and
       not deletes_protected?(state, cmd)
@@ -668,7 +699,7 @@ defmodule SeedFactory.Requirements.Solver do
 
         state
         |> Map.update!(:trait_execs, &Map.put(&1, {entity, name}, decl.command))
-        |> exclude_losing_declarations(entity, name, decl)
+        |> lose_other_declarations(entity, name, decl)
         |> add_edge(demander, decl.command, [decl.trait])
         |> push_prerequisite(entity, decl)
 
@@ -677,21 +708,20 @@ defmodule SeedFactory.Requirements.Solver do
     end
   end
 
-  # The winner of a trait demand takes the whole plan: the exec commands of the
-  # losing declarations are out, exactly like the removed members of a resolved
-  # conflict group today. Backtracking brings them back when the winner's
-  # subtree fails.
-  defp exclude_losing_declarations(state, entity, name, winner) do
+  # The winner of a trait demand is its only exec: the other declarations of
+  # the name lose, so they neither ride an edge nor make their command
+  # preferred for an entity, and a later demand for the trait reuses the
+  # winner. Their commands stay available for everything else. Backtracking
+  # brings the declarations back when the winner's subtree fails.
+  defp lose_other_declarations(state, entity, name, winner) do
     losers =
       state.candidate_graph.traits
       |> Map.fetch!({entity, name})
       |> Map.fetch!(:declarations)
-      |> Enum.map(& &1.command)
-      |> Enum.reject(fn cmd ->
-        cmd == winner.command or MapSet.member?(state.chosen, cmd)
-      end)
+      |> Enum.reject(&(&1.command == winner.command))
+      |> Enum.map(&{entity, name, &1.command})
 
-    %{state | excluded: MapSet.union(state.excluded, MapSet.new(losers))}
+    %{state | lost: MapSet.union(state.lost, MapSet.new(losers))}
   end
 
   defp choose(state, cmd, phantom?) do
@@ -772,14 +802,21 @@ defmodule SeedFactory.Requirements.Solver do
   # unusable. An exec that was tried and failed deeper carries no viability
   # reason: it failed on its prerequisite, reported separately.
   defp declaration_rejections(state, node, demander, tried_commands \\ []) do
-    node.declarations
-    |> Enum.map(& &1.command)
-    |> Enum.uniq()
-    |> Enum.map(fn cmd ->
+    Enum.map(node.declarations, fn decl ->
+      cmd = decl.command
+
       cond do
-        cmd == demander -> {cmd, :own_trait_demand}
-        cmd in tried_commands -> {cmd, :prerequisite_failed}
-        true -> {cmd, rejection_reason(state, demander, cmd)}
+        cmd == demander ->
+          {cmd, :own_trait_demand}
+
+        cmd in tried_commands ->
+          {cmd, :prerequisite_failed}
+
+        lost?(state, decl) ->
+          {cmd, {:lost_to, node.name, Map.fetch!(state.trait_execs, {node.entity, node.name})}}
+
+        true ->
+          {cmd, rejection_reason(state, demander, cmd)}
       end
     end)
   end
@@ -865,10 +902,12 @@ defmodule SeedFactory.Requirements.Solver do
   end
 
   # Executing a command removes the from lists of the traits it applies (minus
-  # the traits it applies itself). A chosen command removing a REQUESTED trait
-  # is legal only when it is already forced to run before the command applying
-  # the trait: then the removal hits nothing. A phantom never executes, and a
-  # requested trait applied by a phantom is knowingly not delivered.
+  # the traits it applies itself). A chosen command certainly removing a
+  # REQUESTED trait is legal only when it is already forced to run before the
+  # command applying the trait: then the removal hits nothing. A phantom never
+  # executes, and a requested trait applied by a phantom is knowingly not
+  # delivered. Removals depending on values the plan does not fix are judged
+  # by the prediction before each step (Requirements.TraitDelivery).
   defp removed_requested_trait(state) do
     Enum.find_value(state.candidate_graph.request, fn %{entity: entity, trait_names: names} ->
       Enum.find_value(names, fn name ->
@@ -884,43 +923,104 @@ defmodule SeedFactory.Requirements.Solver do
   end
 
   defp requested_trait_removal(state, entity, name, exec) do
-    remover =
-      Enum.find(state.chosen, fn command ->
+    Enum.find_value(state.chosen, fn command ->
+      remover? =
         command != exec and
           not MapSet.member?(state.phantoms, command) and
-          MapSet.member?(effective_trait_removals(state, command, entity), name) and
           not forced_before?(state, exec, command)
-      end)
 
-    if remover do
-      via_trait =
-        state.candidate_graph.context
-        |> SeedFactory.Context.get_traits(entity)
-        |> Kernel.||(%{})
-        |> Map.get(:by_command_name, %{})
-        |> Map.get(remover, [])
-        |> Enum.find(&(name in List.wrap(&1.from)))
+      if remover? do
+        case List.keyfind(effective_trait_removals(state, command, entity), name, 0) do
+          {^name, via} ->
+            trait_failure(entity, name, nil, {:removed_by_command, command, via.name, name})
 
-      trait_failure(entity, name, nil, {:removed_by_command, remover, via_trait.name, name})
-    else
-      nil
+          nil ->
+            nil
+        end
+      end
+    end)
+  end
+
+  # The trait names executing the command certainly strips from the entity,
+  # each paired with the declaration whose from list carries it: a declaration
+  # that fires for sure removes its from list, and no declaration that could
+  # fire re-adds the name. Anything less certain is not refused here.
+  defp effective_trait_removals(state, command, entity) do
+    args = literal_args(state, command)
+
+    classified =
+      for trait <- declared_traits(state, command, entity),
+          do: {trait, firing(state, command, trait, args)}
+
+    re_added = for {trait, status} <- classified, status != :cannot, do: trait.name
+
+    for {trait, :sure} <- classified,
+        removed <- List.wrap(trait.from),
+        removed not in re_added,
+        do: {removed, trait}
+  end
+
+  defp declared_traits(state, command, entity) do
+    state.candidate_graph.context
+    |> SeedFactory.Context.get_traits(entity)
+    |> Kernel.||(%{})
+    |> Map.get(:by_command_name, %{})
+    |> Map.get(command, [])
+  end
+
+  # Whether the declaration fires when the command executes, judged against
+  # the arguments the plan fixes for the command. An args_match function is
+  # opaque here: it fires for sure only as a chosen declaration, whose
+  # generated args the execution merges in.
+  defp firing(state, command, trait, args) do
+    case trait.exec_step do
+      %{args_pattern: pattern} when is_map(pattern) ->
+        Trait.pattern_firing(pattern, args)
+
+      %{args_match: nil} ->
+        :sure
+
+      _ ->
+        if chosen_declaration?(state, command, trait) do
+          :sure
+        else
+          :maybe
+        end
     end
   end
 
-  # The from lists of every trait the command applies, minus the traits it
-  # applies itself: executing the command removes these names from the entity.
-  defp effective_trait_removals(state, command, entity) do
-    declared =
-      state.candidate_graph.context
-      |> SeedFactory.Context.get_traits(entity)
-      |> Kernel.||(%{})
-      |> Map.get(:by_command_name, %{})
-      |> Map.get(command, [])
+  defp chosen_declaration?(state, command, trait) do
+    Enum.any?(state.edges, fn {_demander, cmd, traits} -> cmd == command and trait in traits end)
+  end
 
-    declared
-    |> Enum.flat_map(&List.wrap(&1.from))
-    |> MapSet.new()
-    |> MapSet.difference(MapSet.new(declared, & &1.name))
+  # The arguments the command executes with, as far as the search knows them:
+  # the args_patterns of the trait declarations chosen on it over the literal
+  # defaults of its params. Generated values are unknown; a chosen args_match
+  # declaration merges generated args of unknown shape, so it makes every
+  # default unknown as well. Entities are always unknown here.
+  defp literal_args(state, command) do
+    chosen_traits =
+      for {_demander, cmd, traits} <- state.edges, cmd == command, trait <- traits, do: trait
+
+    input =
+      chosen_traits
+      |> Enum.flat_map(&List.wrap(&1.exec_step.args_pattern))
+      |> Enum.reduce(%{}, &deep_merge(&2, &1))
+
+    generated? = Enum.any?(chosen_traits, &(&1.exec_step.generate_args != nil))
+    params = SeedFactory.Context.fetch_command!(state.candidate_graph.context, command).params
+
+    Params.known_args(params, input, fn _entity -> :unknown end, not generated?)
+  end
+
+  defp deep_merge(left, right) do
+    Map.merge(left, right, fn _key, old, new ->
+      if is_map(old) and is_map(new) and not is_struct(old) and not is_struct(new) do
+        deep_merge(old, new)
+      else
+        new
+      end
+    end)
   end
 
   defp forced_before?(_state, nil, _command), do: false

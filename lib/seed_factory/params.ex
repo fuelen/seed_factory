@@ -38,6 +38,55 @@ defmodule SeedFactory.Params do
     end)
   end
 
+  # Fills the generator params missing from the input, containers included:
+  # the values are generated here, once, and the execution reuses them.
+  def generate_missing(params, input) do
+    Enum.reduce(params, Map.new(input), fn {key, parameter}, input ->
+      case parameter.type do
+        :generator ->
+          Map.put_new_lazy(input, key, parameter.generate)
+
+        :container ->
+          Map.put(input, key, generate_missing(parameter.params, Map.get(input, key, %{})))
+
+        _type ->
+          input
+      end
+    end)
+  end
+
+  # The args as far as they are known before the execution, in the shape of
+  # prepare_args: input values, value defaults (when `trust_defaults?`),
+  # containers recursively, entities through `fetch_entity_fn` returning
+  # `{:ok, value}` or `:unknown`. Anything else is `SeedFactory.Trait.unknown/0`.
+  def known_args(params, input, fetch_entity_fn, trust_defaults?) do
+    Map.new(params, fn {key, parameter} ->
+      value =
+        case {parameter.type, Map.fetch(input, key)} do
+          {:container, _} ->
+            nested = Map.get(input, key, %{})
+            known_args(parameter.params, nested, fetch_entity_fn, trust_defaults?)
+
+          {_type, {:ok, value}} ->
+            value
+
+          {:value, :error} when trust_defaults? ->
+            parameter.value
+
+          {:entity, :error} ->
+            case fetch_entity_fn.(parameter.entity) do
+              {:ok, entity} -> maybe_map(entity, parameter.map)
+              :unknown -> SeedFactory.Trait.unknown()
+            end
+
+          _other ->
+            SeedFactory.Trait.unknown()
+        end
+
+      {key, value}
+    end)
+  end
+
   defp ensure_args_match_defined_params!(input, _params) when map_size(input) == 0, do: :noop
 
   defp ensure_args_match_defined_params!(input, params) do

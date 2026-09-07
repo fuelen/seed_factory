@@ -50,7 +50,8 @@ defmodule SeedFactory.Context do
     context.__seed_factory_meta__.traits[entity_name]
   end
 
-  defp possible_traits(context, entity_name, command_name) do
+  # The trait declarations of the command for the entity, in declaration order.
+  def possible_traits(context, entity_name, command_name) do
     List.wrap(context.__seed_factory_meta__.traits[entity_name][:by_command_name][command_name])
   end
 
