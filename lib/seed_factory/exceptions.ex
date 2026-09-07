@@ -274,22 +274,13 @@ defmodule SeedFactory.TraitResolutionError do
       detail
   end
 
-  defp reason_lines({:commands_rejected, command_names}, indent) do
-    unique_commands = Enum.uniq(command_names)
-
-    case unique_commands do
-      [single] ->
-        [
-          "#{indent_prefix(indent)}- candidate command #{inspect(single)} was previously rejected during conflict resolution"
-        ]
-
-      multiple ->
-        commands = multiple |> Enum.map(&inspect/1) |> Enum.join(", ")
-
-        [
-          "#{indent_prefix(indent)}- all candidate commands [#{commands}] were previously rejected during conflict resolution"
-        ]
-    end
+  defp reason_lines({:commands_rejected, rejections}, indent) do
+    rejections
+    |> Enum.uniq()
+    |> Enum.map(fn {command, reason} ->
+      "#{indent_prefix(indent)}- candidate command #{inspect(command)} " <>
+        SeedFactory.RejectionReason.clause(reason)
+    end)
   end
 
   defp reason_lines(
@@ -442,37 +433,95 @@ defmodule SeedFactory.CircularDependencyError do
   end
 end
 
+defmodule SeedFactory.RejectionReason do
+  @moduledoc false
+
+  # Renders, as a clause following the command name, why the solver refused a
+  # candidate command.
+  def clause({:would_duplicate, entity}) do
+    "would duplicate existing #{inspect(entity)} (rebind or delete it first)"
+  end
+
+  def clause({:produce_conflict, entity, other_command}) do
+    "also produces #{inspect(entity)}, already produced by #{inspect(other_command)} in this plan"
+  end
+
+  def clause({:deletes_requested, entity}) do
+    "deletes requested #{inspect(entity)}"
+  end
+
+  def clause({:self_consuming, entity}) do
+    "both requires and produces #{inspect(entity)}, so it can never run as a dependency"
+  end
+
+  def clause({:cycle, demander}) do
+    "transitively requires #{inspect(demander)}, which would form a cycle"
+  end
+
+  def clause(:lost_trait_resolution) do
+    "lost the resolution of another trait in this plan"
+  end
+
+  def clause(:own_trait_demand) do
+    "demands the trait it provides"
+  end
+
+  def clause(:prerequisite_failed) do
+    "failed on the prerequisites below"
+  end
+
+  def clause({:collection, exception}) do
+    "was rejected by a parameter check (#{exception.__struct__ |> Module.split() |> List.last()})"
+  end
+end
+
 defmodule SeedFactory.UnproducibleEntityError do
-  defexception [:message, :entity, :required_by, :commands, :cause]
+  defexception [:message, :entity, :required_by, :commands, :cause, :rejections]
 
   def exception(opts) when is_list(opts) do
     entity = Keyword.fetch!(opts, :entity)
     required_by = Keyword.fetch!(opts, :required_by)
     commands = Keyword.fetch!(opts, :commands)
     cause = Keyword.get(opts, :cause, :rejected)
+    rejections = Keyword.get(opts, :rejections)
 
     required_by_part = if required_by, do: " required by #{inspect(required_by)}", else: ""
 
     # :not_planned lists candidates that may have never entered the plan, so it
-    # must not claim they were rejected. :over_deleted lists the deleters that
-    # cannot share the single context instance.
+    # must not claim they were rejected. :over_deleted and :unorderable list
+    # the commands that cannot share the entity's instances.
     cause_part =
       case cause do
-        :rejected -> "all commands able to produce it were rejected during conflict resolution: "
-        :not_planned -> "no command able to produce it is part of the execution plan: "
-        :over_deleted -> "it sits in the context once, but the plan deletes it more than once: "
+        :rejected ->
+          "no candidate command fits the plan\n" <> rejection_lines(rejections)
+
+        :not_planned ->
+          "no command able to produce it is part of the execution plan: " <> inspect(commands)
+
+        :over_deleted ->
+          "it sits in the context once, but the plan deletes it more than once: " <>
+            inspect(commands)
+
+        :unorderable ->
+          "the commands producing and deleting it cannot interleave produce → delete → produce: " <>
+            inspect(commands)
       end
 
-    message =
-      "cannot produce entity #{inspect(entity)}#{required_by_part}: " <>
-        cause_part <> inspect(commands)
+    message = "cannot produce entity #{inspect(entity)}#{required_by_part}: " <> cause_part
 
     %__MODULE__{
       message: message,
       entity: entity,
       required_by: required_by,
       commands: commands,
-      cause: cause
+      cause: cause,
+      rejections: rejections
     }
+  end
+
+  defp rejection_lines(rejections) do
+    Enum.map_join(rejections, "\n", fn {command, reason} ->
+      "- #{inspect(command)} #{SeedFactory.RejectionReason.clause(reason)}"
+    end)
   end
 end

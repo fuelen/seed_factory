@@ -44,9 +44,12 @@ defmodule SeedFactory.ConsumedInstanceTest do
       produce(context, [{:prize, [:sealed]}, :token, :extra])
     end
 
-    assert_raise SeedFactory.UnproducibleEntityError, fn ->
-      produce(context, [{:prize, [:sealed]}, :token])
-    end
+    assert_raise SeedFactory.UnproducibleEntityError,
+                 "cannot produce entity :token: no candidate command fits the plan\n" <>
+                   "- :burn_prize deletes requested :prize",
+                 fn ->
+                   produce(context, [{:prize, [:sealed]}, :token])
+                 end
 
     assert_raise SeedFactory.UnproducibleEntityError, fn ->
       produce(context, [:prize, :token])

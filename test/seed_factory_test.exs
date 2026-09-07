@@ -990,7 +990,8 @@ defmodule SeedFactoryTest do
       # leave no alternative and the later one in the request is reported.
       assert_raise SeedFactory.TraitResolutionError,
                    "cannot satisfy trait :suspended for entity :user (requested trait)\n" <>
-                     "- candidate command :suspend_user was previously rejected during conflict resolution",
+                     "- candidate command :suspend_user also produces :email, " <>
+                     "already produced by :publish_project in this plan",
                    fn ->
                      produce(context, [:project, user: [:suspended]])
                    end
@@ -1259,7 +1260,7 @@ defmodule SeedFactoryTest do
       expected =
         """
         cannot satisfy trait :production_ready for entity :integration_pipeline (requested trait)
-        - candidate command :bootstrap_production_pipeline was previously rejected during conflict resolution
+        - candidate command :bootstrap_production_pipeline also produces :integration_pipeline, already produced by :bootstrap_sandbox_pipeline in this plan
         """
         |> String.trim_trailing()
 
@@ -1272,9 +1273,9 @@ defmodule SeedFactoryTest do
       expected =
         """
         cannot satisfy trait :deployment_promoted for entity :integration_pipeline (requested trait)
-        - candidate command :promote_pipeline was previously rejected during conflict resolution
+        - candidate command :promote_pipeline failed on the prerequisites below
         - prerequisite trait :sandbox_ready required by :deployment_promoted cannot be satisfied
-          - candidate command :bootstrap_sandbox_pipeline was previously rejected during conflict resolution
+          - candidate command :bootstrap_sandbox_pipeline also produces :integration_pipeline, already produced by :bootstrap_production_pipeline in this plan
         """
         |> String.trim_trailing()
 
@@ -1287,32 +1288,15 @@ defmodule SeedFactoryTest do
       expected =
         """
         cannot satisfy trait :deployment_promoted for entity :integration_pipeline (requested trait)
-        - candidate command :promote_pipeline was previously rejected during conflict resolution
+        - candidate command :promote_pipeline failed on the prerequisites below
         - prerequisite trait :sandbox_ready required by :deployment_promoted cannot be satisfied
-          - candidate command :bootstrap_sandbox_pipeline was previously rejected during conflict resolution
+          - candidate command :bootstrap_sandbox_pipeline also produces :integration_pipeline, already produced by :bootstrap_production_pipeline in this plan
         """
         |> String.trim_trailing()
 
       assert_raise(SeedFactory.TraitResolutionError, expected, fn ->
         exec(context, :finalize_pipeline_launch)
       end)
-    end
-
-    test "uses plural phrasing when multiple implementations were rejected", context do
-      error =
-        assert_raise SeedFactory.TraitResolutionError, fn ->
-          produce(context, integration_pipeline: [:regional_ready, :compliance_signed_off])
-        end
-
-      assert String.contains?(
-               error.message,
-               "- all candidate commands [:sign_off_compliance_from_legacy, :sign_off_compliance_from_blocked] were previously rejected during conflict resolution"
-             )
-
-      assert String.contains?(
-               error.message,
-               "- prerequisite trait :blocked_ready required by :compliance_signed_off cannot be satisfied"
-             )
     end
 
     test "labels traits required by commands in the error context", context do
@@ -1324,9 +1308,9 @@ defmodule SeedFactoryTest do
       expected =
         """
         cannot satisfy trait :deployment_promoted for entity :integration_pipeline (trait required by :publish_launch_announcement command)
-        - candidate command :promote_pipeline was previously rejected during conflict resolution
+        - candidate command :promote_pipeline failed on the prerequisites below
         - prerequisite trait :sandbox_ready required by :deployment_promoted cannot be satisfied
-          - candidate command :bootstrap_sandbox_pipeline was previously rejected during conflict resolution
+          - candidate command :bootstrap_sandbox_pipeline also produces :integration_pipeline, already produced by :bootstrap_production_pipeline in this plan
         """
         |> String.trim_trailing()
 
@@ -1343,11 +1327,12 @@ defmodule SeedFactoryTest do
       expected =
         """
         cannot satisfy trait :compliance_signed_off for entity :integration_pipeline (requested trait)
-        - all candidate commands [:sign_off_compliance_from_legacy, :sign_off_compliance_from_blocked] were previously rejected during conflict resolution
+        - candidate command :sign_off_compliance_from_legacy failed on the prerequisites below
+        - candidate command :sign_off_compliance_from_blocked failed on the prerequisites below
         - prerequisite trait :legacy_ready required by :compliance_signed_off cannot be satisfied
-          - candidate command :bootstrap_legacy_pipeline was previously rejected during conflict resolution
+          - candidate command :bootstrap_legacy_pipeline also produces :integration_pipeline, already produced by :bootstrap_sandbox_pipeline in this plan
         - prerequisite trait :blocked_ready required by :compliance_signed_off cannot be satisfied
-          - candidate command :bootstrap_blocked_pipeline was previously rejected during conflict resolution
+          - candidate command :bootstrap_blocked_pipeline also produces :integration_pipeline, already produced by :bootstrap_sandbox_pipeline in this plan
         """
         |> String.trim_trailing()
 

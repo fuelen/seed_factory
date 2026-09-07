@@ -40,7 +40,12 @@ defmodule SeedFactory.SingleProducerTwoDeletersTest do
       end
 
     assert error.entity == :e
+    assert error.cause == :unorderable
     assert error.commands == [:create_e]
+
+    assert error.message ==
+             "cannot produce entity :e: the commands producing and deleting it cannot interleave " <>
+               "produce → delete → produce: [:create_e]"
   end
 
   test "a single deleter of a single produced instance stays legal", context do

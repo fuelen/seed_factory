@@ -59,30 +59,33 @@ defmodule SeedFactory.Requirements.Solver do
 
   def build_graph(context, entities_with_trait_names) do
     restrictions = Restrictions.new(context, entities_with_trait_names)
-    cg = CandidateGraph.new(context, restrictions, entities_with_trait_names)
-    solve_and_materialize(cg, :produce)
+    candidate_graph = CandidateGraph.new(context, restrictions, entities_with_trait_names)
+    solve_and_materialize(candidate_graph, :produce)
   end
 
   def build_graph_for_pre_produce(context, entities_with_trait_names) do
     restrictions = Restrictions.new(context, entities_with_trait_names)
-    cg = CandidateGraph.new(context, restrictions, entities_with_trait_names)
-    solve_and_materialize(cg, :pre_produce)
+    candidate_graph = CandidateGraph.new(context, restrictions, entities_with_trait_names)
+    solve_and_materialize(candidate_graph, :pre_produce)
   end
 
   def build_graph_for_command(context, command, initial_input) do
     restrictions = Restrictions.new(context, [])
-    cg = CandidateGraph.new(context, restrictions, [{:command, command, initial_input}])
-    solve_and_materialize(cg, :produce)
+
+    candidate_graph =
+      CandidateGraph.new(context, restrictions, [{:command, command, initial_input}])
+
+    solve_and_materialize(candidate_graph, :produce)
   end
 
-  defp solve_and_materialize(cg, mode) do
+  defp solve_and_materialize(candidate_graph, mode) do
     passes = [%{strict_cycles?: true}, %{strict_cycles?: false}]
 
-    run_passes(passes, cg, mode, nil)
+    run_passes(passes, candidate_graph, mode, nil)
   end
 
-  defp run_passes([pass | rest], cg, mode, strict_failure) do
-    state = initial_state(cg, mode, pass)
+  defp run_passes([pass | rest], candidate_graph, mode, strict_failure) do
+    state = initial_state(candidate_graph, mode, pass)
 
     case solve(state) do
       {:ok, solution} ->
@@ -103,16 +106,16 @@ defmodule SeedFactory.Requirements.Solver do
             raise (strict_failure || failure).exception
 
           rest ->
-            run_passes(rest, cg, mode, strict_failure)
+            run_passes(rest, candidate_graph, mode, strict_failure)
         end
     end
   end
 
-  defp initial_state(cg, mode, pass) do
+  defp initial_state(candidate_graph, mode, pass) do
     pre_produce? = mode == :pre_produce
 
     state = %{
-      cg: cg,
+      candidate_graph: candidate_graph,
       pre_produce?: pre_produce?,
       chosen: MapSet.new(),
       excluded: MapSet.new(),
@@ -123,10 +126,10 @@ defmodule SeedFactory.Requirements.Solver do
       extra_edges: [],
       stack: [],
       strict_cycles?: pass.strict_cycles?,
-      protected: MapSet.new(cg.request, & &1.entity)
+      protected: MapSet.new(candidate_graph.request, & &1.entity)
     }
 
-    push_params(state, cg.request, nil)
+    push_params(state, candidate_graph.request, nil)
   end
 
   # The search
@@ -208,7 +211,7 @@ defmodule SeedFactory.Requirements.Solver do
   end
 
   defp viable_options(state, {:entity, entity, demander, preferred?} = demand) do
-    node = Map.fetch!(state.cg.entities, entity)
+    node = Map.fetch!(state.candidate_graph.entities, entity)
 
     if node.in_context? do
       :satisfied
@@ -232,7 +235,7 @@ defmodule SeedFactory.Requirements.Solver do
           for cmd <- candidates,
               not MapSet.member?(state.chosen, cmd),
               not MapSet.member?(state.excluded, cmd),
-              command_collection_failure(state.cg, cmd) == nil,
+              command_collection_failure(state.candidate_graph, cmd) == nil,
               phantom?(state, demander, cmd) or
                 (not produce_conflict?(state, cmd) and
                    not self_consuming_producer?(state, cmd)),
@@ -250,7 +253,7 @@ defmodule SeedFactory.Requirements.Solver do
   end
 
   defp viable_options(state, {:trait, entity, name, demander}) do
-    node = Map.fetch!(state.cg.traits, {entity, name})
+    node = Map.fetch!(state.candidate_graph.traits, {entity, name})
 
     case node.status do
       :satisfied ->
@@ -277,7 +280,7 @@ defmodule SeedFactory.Requirements.Solver do
                 decl.command != demander,
                 not MapSet.member?(state.chosen, decl.command),
                 not MapSet.member?(state.excluded, decl.command),
-                command_collection_failure(state.cg, decl.command) == nil,
+                command_collection_failure(state.candidate_graph, decl.command) == nil,
                 phantom?(state, demander, decl.command) or
                   (not produce_conflict?(state, decl.command) and
                      not self_consuming_producer?(state, decl.command)),
@@ -288,8 +291,8 @@ defmodule SeedFactory.Requirements.Solver do
 
           case order_declarations(state, viable) do
             [] ->
-              rejected = node.declarations |> Enum.map(& &1.command) |> Enum.uniq()
-              {:zero, trait_failure(entity, name, demander, {:commands_rejected, rejected})}
+              rejections = declaration_rejections(state, node, demander)
+              {:zero, trait_failure(entity, name, demander, {:commands_rejected, rejections})}
 
             viable ->
               {:options, viable}
@@ -301,7 +304,7 @@ defmodule SeedFactory.Requirements.Solver do
   defp viable_options(state, {:any, entity, options, demander}) do
     usable =
       Enum.filter(options, fn name ->
-        Map.fetch!(state.cg.traits, {entity, name}).status in [:continue, :satisfied]
+        Map.fetch!(state.candidate_graph.traits, {entity, name}).status in [:continue, :satisfied]
       end)
 
     case usable do
@@ -319,7 +322,7 @@ defmodule SeedFactory.Requirements.Solver do
   # A missing trail invalidates every trait node of the entity at once, so a
   # dead option here can only be a trail mismatch.
   defp dead_any_option_failure(state, entity, name, demander) do
-    {:mismatch, executed} = Map.fetch!(state.cg.traits, {entity, name}).status
+    {:mismatch, executed} = Map.fetch!(state.candidate_graph.traits, {entity, name}).status
     trait_failure(entity, name, demander, {:trait_mismatch, executed, demander})
   end
 
@@ -333,14 +336,14 @@ defmodule SeedFactory.Requirements.Solver do
   defp order_declarations(state, options) do
     all_creations? =
       Enum.all?(options, fn {:decl, decl, _mode} ->
-        decl.trait.entity in Map.fetch!(state.cg.commands, decl.command).produces
+        decl.trait.entity in Map.fetch!(state.candidate_graph.commands, decl.command).produces
       end)
 
     if all_creations? do
       demanded = demanded_entities(state)
 
       Enum.sort_by(options, fn {:decl, decl, _mode} ->
-        produces = Map.fetch!(state.cg.commands, decl.command).produces
+        produces = Map.fetch!(state.candidate_graph.commands, decl.command).produces
         -Enum.count(produces, &MapSet.member?(demanded, &1))
       end)
     else
@@ -363,8 +366,8 @@ defmodule SeedFactory.Requirements.Solver do
     end
   end
 
-  defp command_collection_failure(cg, cmd) do
-    cg.commands
+  defp command_collection_failure(candidate_graph, cmd) do
+    candidate_graph.commands
     |> Map.fetch!(cmd)
     |> Map.fetch!(:params)
     |> Enum.find_value(fn
@@ -377,19 +380,27 @@ defmodule SeedFactory.Requirements.Solver do
   # plan starts, so a command re-producing it needs a deleter just like a
   # second producer does.
   defp produce_conflict?(state, cmd) do
-    state.cg.commands
+    produce_conflict_reason(state, cmd) != nil
+  end
+
+  defp produce_conflict_reason(state, cmd) do
+    state.candidate_graph.commands
     |> Map.fetch!(cmd)
     |> Map.fetch!(:produces)
-    |> Enum.any?(fn entity ->
+    |> Enum.find_value(fn entity ->
       others = Map.get(state.producers, entity, []) -- [cmd]
 
-      (others != [] or context_instance?(state, entity)) and
-        reachable_deleters(state, entity) == []
+      cond do
+        reachable_deleters(state, entity) != [] -> nil
+        others != [] -> {:produce_conflict, entity, hd(others)}
+        context_instance?(state, entity) -> {:would_duplicate, entity}
+        true -> nil
+      end
     end)
   end
 
   defp context_instance?(state, entity) do
-    SeedFactory.Context.entity_exists?(state.cg.context, entity)
+    SeedFactory.Context.entity_exists?(state.candidate_graph.context, entity)
   end
 
   # A command producing an entity it also consumes can never run as a plan
@@ -398,20 +409,76 @@ defmodule SeedFactory.Requirements.Solver do
   # is executable only through exec with the parameter covered by the initial
   # input. A phantom never executes, so the check does not apply to it.
   defp self_consuming_producer?(state, cmd) do
-    node = Map.fetch!(state.cg.commands, cmd)
+    self_consumed_entity(state, cmd) != nil
+  end
+
+  defp self_consumed_entity(state, cmd) do
+    node = Map.fetch!(state.candidate_graph.commands, cmd)
     param_entities = MapSet.new(node.params, & &1.entity)
 
-    Enum.any?(node.produces, &MapSet.member?(param_entities, &1))
+    Enum.find(node.produces, &MapSet.member?(param_entities, &1))
+  end
+
+  # Rebuilds, on the failure path only, why a candidate did not pass the
+  # viability filters. Mirrors their order; nil for a viable candidate (one
+  # that was tried and failed deeper in the search).
+  defp rejection_reason(state, demander, cmd) do
+    cond do
+      MapSet.member?(state.chosen, cmd) ->
+        {:cycle, demander}
+
+      MapSet.member?(state.excluded, cmd) ->
+        :lost_trait_resolution
+
+      exception = command_collection_failure(state.candidate_graph, cmd) ->
+        {:collection, exception}
+
+      reason = viable_conflict_reason(state, demander, cmd) ->
+        reason
+
+      entity = deleted_protected_entity(state, cmd) ->
+        {:deletes_requested, entity}
+
+      # The only filter left is the cycle check. An unchosen candidate carries
+      # no requires edges, so it can fail that check only in exotic shapes the
+      # suite cannot construct - the arm mirrors the filter as a net.
+      true ->
+        {:cycle, demander}
+    end
+  end
+
+  defp viable_conflict_reason(state, demander, cmd) do
+    if phantom?(state, demander, cmd) do
+      nil
+    else
+      case produce_conflict_reason(state, cmd) do
+        nil ->
+          case self_consumed_entity(state, cmd) do
+            nil -> nil
+            entity -> {:self_consuming, entity}
+          end
+
+        reason ->
+          reason
+      end
+    end
+  end
+
+  defp deleted_protected_entity(state, cmd) do
+    state.candidate_graph.commands
+    |> Map.fetch!(cmd)
+    |> Map.fetch!(:deletes)
+    |> Enum.find(&MapSet.member?(state.protected, &1))
   end
 
   # Only deleters that can end up in the plan legalize a second producer: they
   # must have been collected as candidates and must not delete a protected
   # entity (such a command is never chosen).
   defp reachable_deleters(state, entity) do
-    state.cg.deleters_by_entity
+    state.candidate_graph.deleters_by_entity
     |> Map.get(entity, [])
     |> Enum.filter(fn cmd ->
-      Map.has_key?(state.cg.commands, cmd) and not deletes_protected?(state, cmd)
+      Map.has_key?(state.candidate_graph.commands, cmd) and not deletes_protected?(state, cmd)
     end)
   end
 
@@ -419,10 +486,7 @@ defmodule SeedFactory.Requirements.Solver do
   # produce guarantees the entity sits in the final context, pre_produce
   # guarantees a request never consumes what it names.
   defp deletes_protected?(state, cmd) do
-    state.cg.commands
-    |> Map.fetch!(cmd)
-    |> Map.fetch!(:deletes)
-    |> Enum.any?(&MapSet.member?(state.protected, &1))
+    deleted_protected_entity(state, cmd) != nil
   end
 
   # In the pre_produce mode a chosen command whose effects must not survive
@@ -436,7 +500,7 @@ defmodule SeedFactory.Requirements.Solver do
   end
 
   defp produces_requested?(state, cmd) do
-    state.cg.commands
+    state.candidate_graph.commands
     |> Map.fetch!(cmd)
     |> Map.fetch!(:produces)
     |> Enum.any?(&MapSet.member?(state.protected, &1))
@@ -493,13 +557,13 @@ defmodule SeedFactory.Requirements.Solver do
 
     params =
       for cmd <- live,
-          param <- Map.fetch!(state.cg.commands, cmd).params,
+          param <- Map.fetch!(state.candidate_graph.commands, cmd).params,
           param.status == :ok,
-          demand <- param_demands(state.cg, param, cmd),
+          demand <- param_demands(state.candidate_graph, param, cmd),
           do: demand
 
     prerequisites =
-      for {{entity, _name}, node} <- state.cg.traits,
+      for {{entity, _name}, node} <- state.candidate_graph.traits,
           node.status == :continue,
           decl <- node.declarations,
           MapSet.member?(live, decl.command),
@@ -532,17 +596,17 @@ defmodule SeedFactory.Requirements.Solver do
       expand_live(rest, state, live)
     else
       live = MapSet.put(live, cmd)
-      node = Map.fetch!(state.cg.commands, cmd)
+      node = Map.fetch!(state.candidate_graph.commands, cmd)
 
       from_params =
         for param <- node.params,
             param.status == :ok,
-            demand <- param_demands(state.cg, param, cmd),
+            demand <- param_demands(state.candidate_graph, param, cmd),
             candidate <- demand_candidates(state, demand),
             do: candidate
 
       from_prerequisites =
-        for {{entity, _name}, trait_node} <- state.cg.traits,
+        for {{entity, _name}, trait_node} <- state.candidate_graph.traits,
             trait_node.status == :continue,
             decl <- trait_node.declarations,
             decl.command == cmd,
@@ -559,7 +623,7 @@ defmodule SeedFactory.Requirements.Solver do
   # and no phantom awareness (the pre_produce relaxations decide options, not
   # reachability).
   defp demand_candidates(state, {:entity, entity, _demander, _preferred?}) do
-    node = Map.fetch!(state.cg.entities, entity)
+    node = Map.fetch!(state.candidate_graph.entities, entity)
 
     if node.in_context? do
       []
@@ -569,7 +633,7 @@ defmodule SeedFactory.Requirements.Solver do
   end
 
   defp demand_candidates(state, {:trait, entity, name, demander}) do
-    node = Map.fetch!(state.cg.traits, {entity, name})
+    node = Map.fetch!(state.candidate_graph.traits, {entity, name})
 
     case node.status do
       :continue ->
@@ -594,19 +658,19 @@ defmodule SeedFactory.Requirements.Solver do
   defp candidate_live?(state, cmd) do
     not MapSet.member?(state.chosen, cmd) and
       not MapSet.member?(state.excluded, cmd) and
-      command_collection_failure(state.cg, cmd) == nil and
+      command_collection_failure(state.candidate_graph, cmd) == nil and
       not produce_conflict?(state, cmd) and
       not deletes_protected?(state, cmd)
   end
 
   # The trait demands of one entry go before its entity demand, so the trait
   # choices steer the producer choice and not the other way around.
-  defp param_demands(cg, param, demander) do
+  defp param_demands(candidate_graph, param, demander) do
     entity = [{:entity, param.entity, demander, param.trait_names == []}]
 
     traits =
       for name <- param.trait_names,
-          Map.has_key?(cg.traits, {param.entity, name}),
+          Map.has_key?(candidate_graph.traits, {param.entity, name}),
           do: {:trait, param.entity, name, demander}
 
     traits ++ entity
@@ -649,7 +713,7 @@ defmodule SeedFactory.Requirements.Solver do
   # subtree fails.
   defp exclude_losing_declarations(state, entity, name, winner) do
     losers =
-      state.cg.traits
+      state.candidate_graph.traits
       |> Map.fetch!({entity, name})
       |> Map.fetch!(:declarations)
       |> Enum.map(& &1.command)
@@ -661,7 +725,7 @@ defmodule SeedFactory.Requirements.Solver do
   end
 
   defp choose(state, cmd, phantom?) do
-    node = Map.fetch!(state.cg.commands, cmd)
+    node = Map.fetch!(state.candidate_graph.commands, cmd)
 
     state =
       if phantom? do
@@ -698,7 +762,7 @@ defmodule SeedFactory.Requirements.Solver do
 
   defp push_params(state, params, demander) do
     params
-    |> Enum.flat_map(&param_demands_or_failure(state.cg, &1, demander))
+    |> Enum.flat_map(&param_demands_or_failure(state.candidate_graph, &1, demander))
     |> then(&push_demands(state, &1))
   end
 
@@ -706,17 +770,18 @@ defmodule SeedFactory.Requirements.Solver do
     %{state | stack: demands ++ state.stack}
   end
 
-  defp param_demands_or_failure(cg, param, demander) do
+  defp param_demands_or_failure(candidate_graph, param, demander) do
     case param.status do
       {:error, exception} -> [{:failed, exception}]
-      :ok -> param_demands(cg, param, demander)
+      :ok -> param_demands(candidate_graph, param, demander)
     end
   end
 
   # Failures
 
   defp entity_failure(state, {:entity, entity, demander, _}, candidates) do
-    collection_failures = Enum.map(candidates, &command_collection_failure(state.cg, &1))
+    collection_failures =
+      Enum.map(candidates, &command_collection_failure(state.candidate_graph, &1))
 
     exception =
       if candidates != [] and Enum.all?(collection_failures) do
@@ -725,11 +790,28 @@ defmodule SeedFactory.Requirements.Solver do
         SeedFactory.UnproducibleEntityError.exception(
           entity: entity,
           required_by: demander,
-          commands: candidates
+          commands: candidates,
+          rejections: Enum.map(candidates, &{&1, rejection_reason(state, demander, &1)})
         )
       end
 
     %{kind: :other, exception: exception}
+  end
+
+  # The trait's declarations, each with the reason its exec command was
+  # unusable. An exec that was tried and failed deeper carries no viability
+  # reason: it failed on its prerequisite, reported separately.
+  defp declaration_rejections(state, node, demander, tried_commands \\ []) do
+    node.declarations
+    |> Enum.map(& &1.command)
+    |> Enum.uniq()
+    |> Enum.map(fn cmd ->
+      cond do
+        cmd == demander -> {cmd, :own_trait_demand}
+        cmd in tried_commands -> {cmd, :prerequisite_failed}
+        true -> {cmd, rejection_reason(state, demander, cmd)}
+      end
+    end)
   end
 
   defp trait_failure(entity, name, demander, reason) do
@@ -772,14 +854,14 @@ defmodule SeedFactory.Requirements.Solver do
           {:prerequisite_unsatisfied, name, failure.name, failure.reason}
         end
 
-      execs =
-        state.cg.traits
-        |> Map.fetch!({entity, name})
-        |> Map.fetch!(:declarations)
-        |> Enum.map(& &1.command)
-        |> Enum.uniq()
+      tried_commands =
+        for {{:decl, decl, _mode}, failure} <- failures,
+            prerequisite_failure?(decl, failure),
+            do: decl.command
 
-      reason = {:all_traits_failed, [{:commands_rejected, execs} | prereq_reasons]}
+      node = Map.fetch!(state.candidate_graph.traits, {entity, name})
+      rejections = declaration_rejections(state, node, demander, tried_commands)
+      reason = {:all_traits_failed, [{:commands_rejected, rejections} | prereq_reasons]}
 
       trait_failure(entity, name, demander, reason)
     end
@@ -817,7 +899,7 @@ defmodule SeedFactory.Requirements.Solver do
     # A context instance with several chosen deleters and no re-producer is
     # over-deleted: only the first deleter would find it alive.
     producerless =
-      for {entity, _deleters} <- state.cg.deleters_by_entity,
+      for {entity, _deleters} <- state.candidate_graph.deleters_by_entity,
           not Map.has_key?(state.producers, entity),
           context_instance?(state, entity),
           several_chosen_deleters?(state, entity),
@@ -843,7 +925,8 @@ defmodule SeedFactory.Requirements.Solver do
           SeedFactory.UnproducibleEntityError.exception(
             entity: entity,
             required_by: nil,
-            commands: producers -- [@context_instance]
+            commands: producers -- [@context_instance],
+            cause: :unorderable
           )
 
         {:fail, %{kind: :other, exception: exception}}
@@ -853,7 +936,9 @@ defmodule SeedFactory.Requirements.Solver do
   defp order_multi_producers(_state, [], edges), do: {:ok, edges}
 
   defp order_multi_producers(state, [{entity, producers} | rest], edges) do
-    deleters = chosen_deleters(state, Map.get(state.cg.deleters_by_entity, entity, []))
+    deleters =
+      chosen_deleters(state, Map.get(state.candidate_graph.deleters_by_entity, entity, []))
+
     unorderable = {:unorderable, entity, producers, deleters}
 
     case consistent_sequences(state, producers, deleters, edges) do
@@ -881,7 +966,7 @@ defmodule SeedFactory.Requirements.Solver do
   end
 
   defp several_chosen_deleters?(state, entity) do
-    deleters = Map.get(state.cg.deleters_by_entity, entity, [])
+    deleters = Map.get(state.candidate_graph.deleters_by_entity, entity, [])
     match?([_, _ | _], chosen_deleters(state, deleters))
   end
 

@@ -37,8 +37,11 @@ defmodule SeedFactory.PreProduceSelfDemandingTraitTest do
       pre_produce(context, dep: [:sealed])
     end
 
-    assert_raise SeedFactory.TraitResolutionError, fn ->
-      produce(context, dep: [:sealed])
-    end
+    assert_raise SeedFactory.TraitResolutionError,
+                 "cannot satisfy trait :sealed for entity :dep (trait required by :seal_dep command)\n" <>
+                   "- candidate command :seal_dep demands the trait it provides",
+                 fn ->
+                   produce(context, dep: [:sealed])
+                 end
   end
 end

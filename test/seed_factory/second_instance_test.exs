@@ -157,9 +157,9 @@ defmodule SeedFactory.SecondInstanceTest do
 
     assert error.message == """
            cannot satisfy trait :extended for entity :contract (requested trait)
-           - candidate command :extend_contract was previously rejected during conflict resolution
+           - candidate command :extend_contract failed on the prerequisites below
            - prerequisite trait :approved required by :extended cannot be satisfied
-             - candidate command :approve_contract was previously rejected during conflict resolution\
+             - candidate command :approve_contract would duplicate existing :approval (rebind or delete it first)\
            """
   end
 end

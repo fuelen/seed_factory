@@ -73,8 +73,9 @@ defmodule SeedFactory.UnproducibleEntityTest do
        context do
     # Was: produce silently returned a context without the requested :beta.
     assert_raise SeedFactory.UnproducibleEntityError,
-                 "cannot produce entity :beta: all commands able to produce it " <>
-                   "were rejected during conflict resolution: [:cmd_a, :cmd_b]",
+                 "cannot produce entity :beta: no candidate command fits the plan\n" <>
+                   "- :cmd_a also produces :alpha, already produced by :cmd_c in this plan\n" <>
+                   "- :cmd_b also produces :alpha, already produced by :cmd_c in this plan",
                  fn ->
                    produce(context, [:alpha, :hotel, :beta, :gamma_report])
                  end
@@ -88,8 +89,9 @@ defmodule SeedFactory.UnproducibleEntityTest do
     # the narrowed subset. Was: EntityNotFoundError far from the cause, when
     # :cross_check_beta tried to update the never-produced :beta.
     assert_raise SeedFactory.UnproducibleEntityError,
-                 "cannot produce entity :beta required by :use_beta: all commands able to " <>
-                   "produce it were rejected during conflict resolution: [:cmd_a, :cmd_b]",
+                 "cannot produce entity :beta required by :use_beta: no candidate command fits the plan\n" <>
+                   "- :cmd_a also produces :alpha, already produced by :cmd_c in this plan\n" <>
+                   "- :cmd_b also produces :alpha, already produced by :cmd_c in this plan",
                  fn ->
                    produce(context, [:alpha, :hotel, :beta_report])
                  end

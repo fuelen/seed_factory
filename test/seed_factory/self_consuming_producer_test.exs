@@ -58,6 +58,11 @@ defmodule SeedFactory.SelfConsumingProducerTest do
 
     assert error.entity == :pr
     assert error.commands == [:remake_a]
+
+    assert error.message == """
+           cannot produce entity :pr: no candidate command fits the plan
+           - :remake_a both requires and produces :a, so it can never run as a dependency\
+           """
   end
 
   test "a phantom is exempt: pre_produce plans its dependencies", context do
