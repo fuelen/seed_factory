@@ -123,6 +123,7 @@ defmodule SeedFactory.Requirements.Solver do
       edges: [],
       requires: %{},
       producers: %{},
+      trait_execs: %{},
       extra_edges: [],
       stack: [],
       strict_cycles?: pass.strict_cycles?,
@@ -698,6 +699,7 @@ defmodule SeedFactory.Requirements.Solver do
           end
 
         state
+        |> Map.update!(:trait_execs, &Map.put(&1, {entity, name}, decl.command))
         |> exclude_losing_declarations(entity, name, decl)
         |> add_edge(demander, decl.command, [decl.trait])
         |> push_prerequisite(entity, decl)
@@ -888,6 +890,78 @@ defmodule SeedFactory.Requirements.Solver do
   # entities are ordered by a joint backtracking search. The ordering edges
   # become part of the plan.
   defp leaf_check(state) do
+    case removed_requested_trait(state) do
+      nil -> order_producers_and_deleters(state)
+      failure -> {:fail, failure}
+    end
+  end
+
+  # Executing a command removes the from lists of the traits it applies (minus
+  # the traits it applies itself). A chosen command removing a REQUESTED trait
+  # is legal only when it is already forced to run before the command applying
+  # the trait: then the removal hits nothing. A phantom never executes, and a
+  # requested trait applied by a phantom is knowingly not delivered.
+  defp removed_requested_trait(state) do
+    Enum.find_value(state.candidate_graph.request, fn %{entity: entity, trait_names: names} ->
+      Enum.find_value(names, fn name ->
+        exec = state.trait_execs[{entity, name}]
+
+        if exec != nil and MapSet.member?(state.phantoms, exec) do
+          nil
+        else
+          requested_trait_removal(state, entity, name, exec)
+        end
+      end)
+    end)
+  end
+
+  defp requested_trait_removal(state, entity, name, exec) do
+    remover =
+      Enum.find(state.chosen, fn command ->
+        command != exec and
+          not MapSet.member?(state.phantoms, command) and
+          MapSet.member?(effective_trait_removals(state, command, entity), name) and
+          not forced_before?(state, exec, command)
+      end)
+
+    if remover do
+      via_trait =
+        state.candidate_graph.context
+        |> SeedFactory.Context.get_traits(entity)
+        |> Kernel.||(%{})
+        |> Map.get(:by_command_name, %{})
+        |> Map.get(remover, [])
+        |> Enum.find(&(name in List.wrap(&1.from)))
+
+      trait_failure(entity, name, nil, {:removed_by_command, remover, via_trait.name, name})
+    else
+      nil
+    end
+  end
+
+  # The from lists of every trait the command applies, minus the traits it
+  # applies itself: executing the command removes these names from the entity.
+  defp effective_trait_removals(state, command, entity) do
+    declared =
+      state.candidate_graph.context
+      |> SeedFactory.Context.get_traits(entity)
+      |> Kernel.||(%{})
+      |> Map.get(:by_command_name, %{})
+      |> Map.get(command, [])
+
+    declared
+    |> Enum.flat_map(&List.wrap(&1.from))
+    |> MapSet.new()
+    |> MapSet.difference(MapSet.new(declared, & &1.name))
+  end
+
+  defp forced_before?(_state, nil, _command), do: false
+
+  defp forced_before?(state, exec, command) do
+    reaches?(state.requires, exec, command)
+  end
+
+  defp order_producers_and_deleters(state) do
     # A single chosen producer with several chosen deleters has nothing to
     # interleave, but the count check below still has to refuse it.
     multi =

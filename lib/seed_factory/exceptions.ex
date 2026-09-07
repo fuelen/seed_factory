@@ -308,6 +308,13 @@ defmodule SeedFactory.TraitResolutionError do
     end)
   end
 
+  defp reason_lines({:removed_by_command, command, via_trait, removed_trait}, indent) do
+    [
+      "#{indent_prefix(indent)}- command #{inspect(command)}, chosen for the plan, " <>
+        "applies #{inspect(via_trait)} and removes #{inspect(removed_trait)}"
+    ]
+  end
+
   defp reason_lines({:all_traits_failed, errors}, indent) do
     [{:commands_rejected, commands} | rest_errors] = errors
     prerequisite_errors = rest_errors
