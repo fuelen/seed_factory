@@ -316,11 +316,7 @@ defmodule SeedFactory.TraitResolutionError do
   end
 
   defp reason_lines({:all_traits_failed, errors}, indent) do
-    [{:commands_rejected, commands} | rest_errors] = errors
-    prerequisite_errors = rest_errors
-
-    reason_lines({:commands_rejected, commands}, indent) ++
-      Enum.flat_map(prerequisite_errors, &reason_lines(&1, indent))
+    Enum.flat_map(errors, &reason_lines(&1, indent))
   end
 
   defp indent_prefix(indent), do: String.duplicate(" ", indent)

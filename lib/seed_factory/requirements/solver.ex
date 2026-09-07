@@ -79,39 +79,21 @@ defmodule SeedFactory.Requirements.Solver do
   end
 
   defp solve_and_materialize(candidate_graph, mode) do
-    passes = [%{strict_cycles?: true}, %{strict_cycles?: false}]
-
-    run_passes(passes, candidate_graph, mode, nil)
-  end
-
-  defp run_passes([pass | rest], candidate_graph, mode, strict_failure) do
-    state = initial_state(candidate_graph, mode, pass)
-
-    case solve(state) do
+    case solve(initial_state(candidate_graph, mode, true)) do
       {:ok, solution} ->
-        # A solution found by the relaxed pass carries the cycle the strict
-        # passes refused, so the topological sort reports it downstream.
         to_command_graph(solution)
 
-      {:fail, failure} ->
-        strict_failure =
-          if pass.strict_cycles? do
-            strict_failure || failure
-          else
-            strict_failure
-          end
-
-        case rest do
-          [] ->
-            raise (strict_failure || failure).exception
-
-          rest ->
-            run_passes(rest, candidate_graph, mode, strict_failure)
+      {:fail, strict_failure} ->
+        # A solution found by the relaxed pass carries the cycle the strict
+        # pass refused, so the topological sort reports it downstream.
+        case solve(initial_state(candidate_graph, mode, false)) do
+          {:ok, solution} -> to_command_graph(solution)
+          {:fail, _relaxed_failure} -> raise strict_failure.exception
         end
     end
   end
 
-  defp initial_state(candidate_graph, mode, pass) do
+  defp initial_state(candidate_graph, mode, strict_cycles?) do
     pre_produce? = mode == :pre_produce
 
     state = %{
@@ -126,7 +108,10 @@ defmodule SeedFactory.Requirements.Solver do
       trait_execs: %{},
       extra_edges: [],
       stack: [],
-      strict_cycles?: pass.strict_cycles?,
+      strict_cycles?: strict_cycles?,
+      # For a command's own dependencies (exec flows) the request is its
+      # parameter list: the plan must not consume what the command is about
+      # to receive.
       protected: MapSet.new(candidate_graph.request, & &1.entity)
     }
 
@@ -234,16 +219,8 @@ defmodule SeedFactory.Requirements.Solver do
       else
         viable =
           for cmd <- candidates,
-              not MapSet.member?(state.chosen, cmd),
-              not MapSet.member?(state.excluded, cmd),
-              command_collection_failure(state.candidate_graph, cmd) == nil,
-              phantom?(state, demander, cmd) or
-                (not produce_conflict?(state, cmd) and
-                   not self_consuming_producer?(state, cmd)),
-              not deletes_protected?(state, cmd),
-              cycle_ok?(state, demander, cmd) do
-            {:choose, cmd, edge_traits(node, preferred?, cmd)}
-          end
+              viability_failure(state, demander, cmd) == nil,
+              do: {:choose, cmd, edge_traits(node, preferred?, cmd)}
 
         case viable do
           [] -> {:zero, entity_failure(state, demand, candidates)}
@@ -279,16 +256,8 @@ defmodule SeedFactory.Requirements.Solver do
           viable =
             for decl <- node.declarations,
                 decl.command != demander,
-                not MapSet.member?(state.chosen, decl.command),
-                not MapSet.member?(state.excluded, decl.command),
-                command_collection_failure(state.candidate_graph, decl.command) == nil,
-                phantom?(state, demander, decl.command) or
-                  (not produce_conflict?(state, decl.command) and
-                     not self_consuming_producer?(state, decl.command)),
-                not deletes_protected?(state, decl.command),
-                cycle_ok?(state, demander, decl.command) do
-              {:decl, decl, :choose}
-            end
+                viability_failure(state, demander, decl.command) == nil,
+                do: {:decl, decl, :choose}
 
           case order_declarations(state, viable) do
             [] ->
@@ -409,10 +378,6 @@ defmodule SeedFactory.Requirements.Solver do
   # DSL forbids deleting the same entity in the same command. Such a command
   # is executable only through exec with the parameter covered by the initial
   # input. A phantom never executes, so the check does not apply to it.
-  defp self_consuming_producer?(state, cmd) do
-    self_consumed_entity(state, cmd) != nil
-  end
-
   defp self_consumed_entity(state, cmd) do
     node = Map.fetch!(state.candidate_graph.commands, cmd)
     param_entities = MapSet.new(node.params, & &1.entity)
@@ -420,14 +385,12 @@ defmodule SeedFactory.Requirements.Solver do
     Enum.find(node.produces, &MapSet.member?(param_entities, &1))
   end
 
-  # Rebuilds, on the failure path only, why a candidate did not pass the
-  # viability filters. Mirrors their order; nil for a viable candidate (one
-  # that was tried and failed deeper in the search).
-  defp rejection_reason(state, demander, cmd) do
+  # Why a candidate does not pass the viability filters, nil for a viable
+  # one. The filters and the failure report share this function, so they
+  # cannot drift apart. A chosen command lands here only after the reuse
+  # check refused it, which happens only on a cycle: the cycle arm reports it.
+  defp viability_failure(state, demander, cmd) do
     cond do
-      MapSet.member?(state.chosen, cmd) ->
-        {:cycle, demander}
-
       MapSet.member?(state.excluded, cmd) ->
         :lost_trait_resolution
 
@@ -440,12 +403,17 @@ defmodule SeedFactory.Requirements.Solver do
       entity = deleted_protected_entity(state, cmd) ->
         {:deletes_requested, entity}
 
-      # The only filter left is the cycle check. An unchosen candidate carries
-      # no requires edges, so it can fail that check only in exotic shapes the
-      # suite cannot construct - the arm mirrors the filter as a net.
-      true ->
+      not cycle_ok?(state, demander, cmd) ->
         {:cycle, demander}
+
+      true ->
+        nil
     end
+  end
+
+  # The failure report asks only about candidates the filters refused.
+  defp rejection_reason(state, demander, cmd) do
+    viability_failure(state, demander, cmd) || {:cycle, demander}
   end
 
   defp viable_conflict_reason(state, demander, cmd) do

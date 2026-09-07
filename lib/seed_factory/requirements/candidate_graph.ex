@@ -391,6 +391,9 @@ defmodule SeedFactory.Requirements.CandidateGraph do
     end
   end
 
+  # When every candidate would duplicate an entity the list stays whole: the
+  # solver decides whether a deleter legalizes one of them, and the failure
+  # report names them all.
   defp reject_commands_that_would_duplicate_entity(command_names, context, target_entity) do
     case Enum.reject(command_names, &command_would_duplicate_entity?(&1, context, target_entity)) do
       [] -> command_names
