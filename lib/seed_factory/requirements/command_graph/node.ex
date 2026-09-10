@@ -24,10 +24,13 @@ defmodule SeedFactory.Requirements.CommandGraph.Node do
     Map.has_key?(node.required_by, nil)
   end
 
+  # A declaration demanded by several consumers rides several edges; its
+  # generator runs once.
   def resolved_args(%__MODULE__{} = node) do
     node.required_by
     |> Map.values()
     |> List.flatten()
+    |> Enum.uniq()
     |> squash_args()
   end
 
