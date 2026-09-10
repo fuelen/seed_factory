@@ -139,9 +139,8 @@ defmodule SeedFactory.Requirements.CandidateGraph do
       %EntityNode{
         name: entity,
         in_context?: false,
-        candidates: reject_commands_that_would_duplicate_entity(all, context, entity),
-        preferred_candidates:
-          reject_commands_that_would_duplicate_entity(preferred, context, entity),
+        candidates: all,
+        preferred_candidates: preferred,
         traits_by_command: Enum.group_by(traits, & &1.exec_step.command_name)
       }
     end
@@ -389,23 +388,5 @@ defmodule SeedFactory.Requirements.CandidateGraph do
     else
       {:any, from_any_of}
     end
-  end
-
-  # When every candidate would duplicate an entity the list stays whole: the
-  # solver decides whether a deleter legalizes one of them, and the failure
-  # report names them all.
-  defp reject_commands_that_would_duplicate_entity(command_names, context, target_entity) do
-    case Enum.reject(command_names, &command_would_duplicate_entity?(&1, context, target_entity)) do
-      [] -> command_names
-      filtered -> filtered
-    end
-  end
-
-  defp command_would_duplicate_entity?(command_name, context, target_entity) do
-    command = Context.fetch_command!(context, command_name)
-
-    Enum.any?(command.producing_instructions, fn instruction ->
-      instruction.entity != target_entity and Context.entity_exists?(context, instruction.entity)
-    end)
   end
 end
