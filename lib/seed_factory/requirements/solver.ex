@@ -1174,22 +1174,17 @@ defmodule SeedFactory.Requirements.Solver do
 
     unorderable = {:unorderable, entity, producers, deleters}
 
-    case consistent_sequences(state, producers, deleters, edges) do
-      [] ->
-        unorderable
-
-      sequences ->
-        Enum.reduce_while(sequences, unorderable, fn sequence, _failure ->
-          case order_multi_producers(
-                 state,
-                 rest,
-                 edges ++ consecutive_edges(sequence, edges, state)
-               ) do
-            {:ok, _} = ok -> {:halt, ok}
-            {:unorderable, _, _, _} = failure -> {:cont, failure}
-          end
-        end)
-    end
+    Enum.reduce_while(consistent_sequences(state, producers, deleters, edges), unorderable, fn
+      sequence, _failure ->
+        case order_multi_producers(
+               state,
+               rest,
+               edges ++ consecutive_edges(sequence, edges, state)
+             ) do
+          {:ok, _} = ok -> {:halt, ok}
+          {:unorderable, _, _, _} = failure -> {:cont, failure}
+        end
+    end)
   end
 
   defp chosen_deleters(state, deleters) do
@@ -1211,11 +1206,17 @@ defmodule SeedFactory.Requirements.Solver do
     end
   end
 
+  # The interleave orders of the producers and deleters of one entity that
+  # the dependencies allow, built position by position: a command joins a
+  # prefix only when no command already placed requires it, so a prefix the
+  # dependencies rule out is dropped at once instead of being completed and
+  # refused. The orders come as a stream: the joint search over the entities
+  # pulls the next one only when the previous one failed downstream.
   defp consistent_sequences(state, producers, deleters, edges) do
-    {head, permutable} =
+    {head, permutable, next} =
       case producers do
-        [@context_instance | rest] -> {[@context_instance], rest}
-        producers -> {[], producers}
+        [@context_instance | rest] -> {[@context_instance], rest, :deleter}
+        producers -> {[], producers, :producer}
       end
 
     producer_count = length(producers)
@@ -1230,46 +1231,38 @@ defmodule SeedFactory.Requirements.Solver do
         (head != [] and deleter_count == producer_count)
 
     if allowed? do
-      for ordered_producers <- permutations(permutable),
-          ordered_deleters <- permutations(deleters),
-          sequence = interleave(head ++ ordered_producers, ordered_deleters),
-          sequence_consistent?(state, sequence, edges),
-          do: sequence
+      extend(head, permutable, deleters, next, requires_with_extra_edges(state, edges))
     else
       []
     end
   end
 
-  defp interleave([], []), do: []
+  defp extend(placed, [], [], _next, _requires), do: [Enum.reverse(placed)]
 
-  defp interleave([producer | producers], deleters) do
-    case deleters do
-      [] -> [producer | producers]
-      [deleter | deleters] -> [producer, deleter | interleave(producers, deleters)]
-    end
+  defp extend(placed, producers, deleters, :producer, requires) do
+    producers
+    |> Stream.filter(&fits_after?(placed, &1, requires))
+    |> Stream.flat_map(fn producer ->
+      extend([producer | placed], List.delete(producers, producer), deleters, :deleter, requires)
+    end)
   end
 
-  defp sequence_consistent?(state, sequence, acc) do
-    requires = requires_with_extra_edges(state, acc)
-
-    sequence
-    |> ordered_pairs()
-    |> Enum.all?(fn {before_cmd, after_cmd} ->
-      not reaches?(requires, before_cmd, after_cmd)
+  defp extend(placed, producers, deleters, :deleter, requires) do
+    deleters
+    |> Stream.filter(&fits_after?(placed, &1, requires))
+    |> Stream.flat_map(fn deleter ->
+      extend([deleter | placed], producers, List.delete(deleters, deleter), :producer, requires)
     end)
+  end
+
+  defp fits_after?(placed, command, requires) do
+    Enum.all?(placed, fn before_cmd -> not reaches?(requires, before_cmd, command) end)
   end
 
   defp requires_with_extra_edges(state, extra_edges) do
     Enum.reduce(extra_edges, state.requires, fn {before_cmd, after_cmd}, requires ->
       Map.update(requires, after_cmd, MapSet.new([before_cmd]), &MapSet.put(&1, before_cmd))
     end)
-  end
-
-  defp ordered_pairs(sequence) do
-    for {before_cmd, i} <- Enum.with_index(sequence),
-        {after_cmd, j} <- Enum.with_index(sequence),
-        i < j,
-        do: {before_cmd, after_cmd}
   end
 
   # The virtual context instance is not a command, so it carries no edge.
@@ -1281,12 +1274,6 @@ defmodule SeedFactory.Requirements.Solver do
     |> Enum.reject(fn {before_cmd, after_cmd} ->
       before_cmd == @context_instance or reaches?(requires, after_cmd, before_cmd)
     end)
-  end
-
-  defp permutations([]), do: [[]]
-
-  defp permutations(list) do
-    for head <- list, tail <- permutations(list -- [head]), do: [head | tail]
   end
 
   # Materialization into the final-graph invariant consumed by execution.
