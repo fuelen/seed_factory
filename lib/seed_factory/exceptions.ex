@@ -197,20 +197,40 @@ defmodule SeedFactory.TraitPathNotFoundError do
 end
 
 defmodule SeedFactory.MissingRequestedTraitError do
-  defexception [:message, :entity, :binding, :trait, :removed_by, :removed_when]
+  defexception [
+    :message,
+    :entity,
+    :binding,
+    :trait,
+    :required_by,
+    :removed_by,
+    :removed_when
+  ]
 
-  # Raised by the prediction of the requested traits' delivery, before the
-  # first step after which the trait cannot come back. `removed_when` says
-  # whether the remover is a planned step or one this plan already ran while
-  # a later re-add was still uncertain.
+  # Raised by the prediction of the required traits' delivery, before the
+  # first step after which the trait cannot come back. `required_by` is the
+  # planned command whose parameter asks for the trait, nil for the request.
+  # `removed_when` says whether the remover is a planned step or one this plan
+  # already ran while a later re-add was still uncertain.
   def exception(opts) when is_list(opts) do
     entity = Keyword.fetch!(opts, :entity)
     binding = Keyword.fetch!(opts, :binding)
     trait = Keyword.fetch!(opts, :trait)
+    required_by = Keyword.fetch!(opts, :required_by)
     removed_by = Keyword.fetch!(opts, :removed_by)
     removed_when = Keyword.fetch!(opts, :removed_when)
 
     binding_label = format_binding(entity, binding)
+
+    subject =
+      case required_by do
+        nil ->
+          "requested trait #{inspect(trait)} would be missing on #{binding_label} after the plan"
+
+        command ->
+          "trait #{inspect(trait)} required by #{inspect(command)} would be missing on " <>
+            "#{binding_label} when it runs"
+      end
 
     cause =
       case {removed_by, removed_when} do
@@ -224,15 +244,12 @@ defmodule SeedFactory.MissingRequestedTraitError do
           "command #{inspect(command)} removed it and no later planned command applies it"
       end
 
-    message =
-      "requested trait #{inspect(trait)} would be missing on #{binding_label} after the plan: " <>
-        cause
-
     %__MODULE__{
-      message: message,
+      message: subject <> ": " <> cause,
       entity: entity,
       binding: binding,
       trait: trait,
+      required_by: required_by,
       removed_by: removed_by,
       removed_when: removed_when
     }
@@ -365,6 +382,13 @@ defmodule SeedFactory.TraitResolutionError do
     [
       "#{indent_prefix(indent)}- command #{inspect(command)}, chosen for the plan, " <>
         "applies #{inspect(via_trait)} and removes #{inspect(removed_trait)}"
+    ]
+  end
+
+  defp reason_lines({:re_produced_without, command, entity, trait}, indent) do
+    [
+      "#{indent_prefix(indent)}- command #{inspect(command)}, chosen for the plan, " <>
+        "re-produces #{inspect(entity)} without #{inspect(trait)}"
     ]
   end
 
@@ -552,7 +576,8 @@ defmodule SeedFactory.UnproducibleEntityError do
 
     # :not_planned lists candidates that may have never entered the plan, so it
     # must not claim they were rejected. :over_deleted and :unorderable list
-    # the commands that cannot share the entity's instances.
+    # the commands that cannot share the entity's instances;
+    # :deleted_before_consumer the one deleter the consumer depends on.
     cause_part =
       case cause do
         :rejected ->
@@ -568,6 +593,10 @@ defmodule SeedFactory.UnproducibleEntityError do
         :unorderable ->
           "the commands producing and deleting it cannot interleave produce → delete → produce: " <>
             inspect(commands)
+
+        :deleted_before_consumer ->
+          "command #{inspect(hd(commands))}, chosen for the plan, deletes it before " <>
+            "#{inspect(required_by)} runs"
       end
 
     message = "cannot produce entity #{inspect(entity)}#{required_by_part}: " <> cause_part

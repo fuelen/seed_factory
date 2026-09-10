@@ -121,6 +121,7 @@ defmodule SeedFactory.Requirements.Solver do
       producers: %{},
       trait_execs: %{},
       extra_edges: [],
+      uncertain_shelters: MapSet.new(),
       stack: [],
       strict_cycles?: strict_cycles?,
       # For a command's own dependencies (exec flows) the request is its
@@ -978,58 +979,315 @@ defmodule SeedFactory.Requirements.Solver do
 
   defp prerequisite_failure?(_decl, _failure), do: false
 
-  # The leaf: several chosen commands producing one entity are legal only when
-  # every chosen deleter of that entity fits between two of its producers, in
-  # an order compatible with the dependencies. An entity already sitting in
-  # the context joins as a virtual first producer pinned to the head of the
-  # sequence. The sequence chosen for one entity constrains the others, so the
-  # entities are ordered by a joint backtracking search. The ordering edges
-  # become part of the plan.
-  defp leaf_check(state) do
-    case removed_requested_trait(state) do
-      nil -> order_producers_and_deleters(state)
-      failure -> {:fail, failure}
+  # A consumer is a chosen command reading an entity through a parameter, or
+  # the request reading it at the end of the plan (the consumer nil). What it
+  # asks for has to hold when it runs, and the order making it hold is decided
+  # here, as edges of the plan: a reader before the deleter of its entity or
+  # after a re-producer, a consumer before a command that may cost it a trait,
+  # a shelter (a re-applier) between a certain loss and its consumer. Each
+  # decision is a depth-first search over its alternatives, the plain one
+  # first (the reader before the deleter, the applier of the demand as the
+  # shelter), so a later requirement the first choice cannot meet sends the
+  # search to the next one. Every alternative adds an edge or records an
+  # uncertain shelter for a read not yet deferred to prediction, so the search
+  # ends; when every alternative fails, the first one's failure is reported.
+  # A phantom never runs, so its parameters ask for nothing.
+  defp check_consumers(state) do
+    case next_read_decision(state) do
+      :settled ->
+        {:ok, state}
+
+      {:fail, _} = failure ->
+        failure
+
+      {:decide, alternatives} ->
+        Enum.reduce_while(alternatives, nil, fn alternative, first_failure ->
+          case check_consumers(alternative) do
+            {:ok, _} = ok -> {:halt, ok}
+            {:fail, _} = failure -> {:cont, first_failure || failure}
+          end
+        end)
     end
   end
 
-  # Executing a command removes the from lists of the traits it applies (minus
-  # the traits it applies itself). A chosen command certainly removing a
-  # REQUESTED trait is legal only when it is already forced to run before the
-  # command applying the trait: then the removal hits nothing. A phantom never
-  # executes, and a requested trait applied by a phantom is knowingly not
-  # delivered. Removals depending on values the plan does not fix are judged
-  # by the prediction before each step (Requirements.TraitDelivery).
-  defp removed_requested_trait(state) do
-    Enum.find_value(state.candidate_graph.request, fn %{entity: entity, trait_names: names} ->
-      Enum.find_value(names, fn name ->
-        exec = state.trait_execs[{entity, name}]
+  # The first read still to be ordered: the entity reads first, as they place
+  # the readers against the deleters and the re-producers, then the trait
+  # reads.
+  defp next_read_decision(state) do
+    requires = current_requires(state)
 
-        if exec != nil and MapSet.member?(state.phantoms, exec) do
-          nil
-        else
-          requested_trait_removal(state, entity, name, exec)
-        end
-      end)
+    with :settled <- next_entity_read_decision(state, requires) do
+      next_trait_read_decision(state, requires)
+    end
+  end
+
+  # The chosen commands in the order they joined the plan, phantoms excluded.
+  defp consumers(state) do
+    state.edges
+    |> Enum.reverse()
+    |> Enum.map(fn {_demander, cmd, _traits} -> cmd end)
+    |> Enum.uniq()
+    |> Enum.reject(&MapSet.member?(state.phantoms, &1))
+  end
+
+  defp trait_requirements(state) do
+    request =
+      for %{entity: entity, trait_names: names} <- state.candidate_graph.request,
+          name <- names,
+          do: {entity, name, nil}
+
+    consumed =
+      for cmd <- consumers(state),
+          param <- Map.fetch!(state.candidate_graph.commands, cmd).params,
+          name <- param.trait_names,
+          do: {param.entity, name, cmd}
+
+    request ++ consumed
+  end
+
+  defp entity_requirements(state) do
+    for cmd <- consumers(state),
+        param <- Map.fetch!(state.candidate_graph.commands, cmd).params,
+        do: {param.entity, cmd}
+  end
+
+  defp current_requires(state) do
+    requires_with_extra_edges(state, state.extra_edges)
+  end
+
+  defp add_edge_after(state, before_cmd, after_cmd) do
+    %{state | extra_edges: state.extra_edges ++ [{before_cmd, after_cmd}]}
+  end
+
+  defp ensure_after(state, requires, before_cmd, after_cmd) do
+    if reaches?(requires, after_cmd, before_cmd) do
+      state
+    else
+      add_edge_after(state, before_cmd, after_cmd)
+    end
+  end
+
+  defp next_entity_read_decision(state, requires) do
+    pairs =
+      for {entity, consumer} <- entity_requirements(state),
+          deleter <-
+            chosen_deleters(state, Map.get(state.candidate_graph.deleters_by_entity, entity, [])),
+          deleter != consumer,
+          do: {entity, consumer, deleter}
+
+    Enum.find_value(pairs, :settled, fn {entity, consumer, deleter} ->
+      entity_read_decision(state, requires, entity, consumer, deleter)
     end)
   end
 
-  defp requested_trait_removal(state, entity, name, exec) do
-    Enum.find_value(state.chosen, fn command ->
-      remover? =
-        command != exec and
-          not MapSet.member?(state.phantoms, command) and
-          not forced_before?(state, exec, command)
+  # A reader the dependencies put after a deleter of its entity reads a
+  # re-produced instance: a chosen producer of the entity after the deleter,
+  # already before the reader or orderable before it. A reader unordered
+  # against the deleter reads the current instance before it, or such a
+  # re-produced one after it. A deletion depends on no argument, so nothing
+  # is left for the prediction before each step.
+  defp entity_read_decision(state, requires, entity, consumer, deleter) do
+    later_producers =
+      for producer <- Map.get(state.producers, entity, []),
+          reaches?(requires, producer, deleter),
+          do: producer
 
-      if remover? do
-        case List.keyfind(effective_trait_removals(state, command, entity), name, 0) do
-          {^name, via} ->
-            trait_failure(entity, name, nil, {:removed_by_command, command, via.name, name})
+    after_producer =
+      for producer <- later_producers,
+          not reaches?(requires, producer, consumer),
+          do: add_edge_after(state, producer, consumer)
 
-          nil ->
-            nil
-        end
+    after_deleter? = reaches?(requires, consumer, deleter)
+
+    cond do
+      reaches?(requires, deleter, consumer) ->
+        nil
+
+      after_deleter? and Enum.any?(later_producers, &reaches?(requires, consumer, &1)) ->
+        nil
+
+      after_deleter? and after_producer == [] ->
+        {:fail, deleted_before_consumer(entity, consumer, deleter)}
+
+      after_deleter? ->
+        {:decide, after_producer}
+
+      true ->
+        {:decide, [add_edge_after(state, consumer, deleter) | after_producer]}
+    end
+  end
+
+  defp deleted_before_consumer(entity, consumer, deleter) do
+    exception =
+      SeedFactory.UnproducibleEntityError.exception(
+        entity: entity,
+        required_by: consumer,
+        commands: [deleter],
+        cause: :deleted_before_consumer
+      )
+
+    %{kind: :other, exception: exception}
+  end
+
+  defp next_trait_read_decision(state, requires) do
+    Enum.find_value(trait_requirements(state), :settled, fn {entity, name, consumer} ->
+      exec = state.trait_execs[{entity, name}]
+
+      if exec != nil and MapSet.member?(state.phantoms, exec) do
+        nil
+      else
+        Enum.find_value(consumers(state), fn command ->
+          trait_read_decision(state, requires, entity, name, exec, consumer, command)
+        end)
       end
     end)
+  end
+
+  # A command costs a consumer a trait when it runs between the applier and
+  # the consumer: it certainly removes the trait (executing a command removes
+  # the from lists of the traits it applies, minus the traits it applies
+  # itself), or it produces the entity anew without certainly applying it.
+  # Such a loss forced before the consumer (always, for the request: every
+  # command runs before the end of the plan) needs a shelter. A command
+  # unordered against the consumer is tried after it first, then before it:
+  # the next read check must shelter a certain loss in that second order.
+  # A phantom never executes, and a requested trait applied by a phantom is
+  # knowingly not delivered. Losses depending on values the plan does not fix
+  # are judged by the prediction before each step (Requirements.TraitDelivery).
+  defp trait_read_decision(state, requires, entity, name, exec, consumer, command) do
+    cond do
+      command == consumer or command == exec ->
+        nil
+
+      before_consumer?(requires, consumer, command) ->
+        case trait_loss(state, command, entity, name) do
+          nil ->
+            nil
+
+          reason ->
+            shelter_decision(state, requires, entity, name, exec, consumer, command, reason)
+        end
+
+      reaches?(requires, command, consumer) ->
+        nil
+
+      may_remove?(state, command, entity, name) or
+          trait_loss(state, command, entity, name) != nil ->
+        {:decide,
+         [add_edge_after(state, consumer, command), add_edge_after(state, command, consumer)]}
+
+      true ->
+        nil
+    end
+  end
+
+  # The chosen commands applying the trait that can run after the loser and
+  # before the consumer: the applier of the demand first, then the commands
+  # applying it for sure, then those that may apply it, which the search
+  # cannot judge and the prediction before the consumer's step does. Only a
+  # certain shelter already in place settles the read immediately. An
+  # uncertain one is a fallback even if already in place; record that choice
+  # on this branch so checking the remaining reads does not retry the certain
+  # alternatives that just failed. Edges only accumulate within the branch,
+  # so the chosen fallback stays between this loss and this consumer.
+  defp shelter_decision(state, requires, entity, name, exec, consumer, loser, reason) do
+    fitting =
+      (List.wrap(exec) ++
+         appliers(state, entity, name, :sure) ++ appliers(state, entity, name, :maybe))
+      |> Enum.uniq()
+      |> Enum.filter(&fits_between?(requires, &1, consumer, loser))
+
+    {certain, uncertain} =
+      Enum.split_with(fitting, &(&1 == exec or application(state, &1, entity, name) == :sure))
+
+    read = {entity, name, consumer, loser}
+
+    cond do
+      Enum.any?(certain, &in_place?(requires, &1, consumer, loser)) or
+          MapSet.member?(state.uncertain_shelters, read) ->
+        nil
+
+      fitting == [] ->
+        {:fail, trait_failure(entity, name, consumer, reason)}
+
+      true ->
+        certain_options =
+          Enum.map(certain, &place_shelter(state, requires, &1, consumer, loser))
+
+        fallback = %{state | uncertain_shelters: MapSet.put(state.uncertain_shelters, read)}
+
+        uncertain_options =
+          Enum.map(uncertain, &place_shelter(fallback, requires, &1, consumer, loser))
+
+        {:decide, certain_options ++ uncertain_options}
+    end
+  end
+
+  defp fits_between?(requires, applier, consumer, loser) do
+    applier != loser and applier != consumer and
+      not reaches?(requires, loser, applier) and
+      (consumer == nil or not reaches?(requires, applier, consumer))
+  end
+
+  defp in_place?(requires, applier, consumer, loser) do
+    reaches?(requires, applier, loser) and
+      (consumer == nil or reaches?(requires, consumer, applier))
+  end
+
+  defp place_shelter(state, requires, applier, consumer, loser) do
+    state = ensure_after(state, requires, loser, applier)
+
+    if consumer == nil do
+      state
+    else
+      ensure_after(state, requires, applier, consumer)
+    end
+  end
+
+  defp appliers(state, entity, name, status) do
+    for command <- consumers(state),
+        application(state, command, entity, name) == status,
+        do: command
+  end
+
+  defp trait_loss(state, command, entity, name) do
+    removal = List.keyfind(effective_trait_removals(state, command, entity), name, 0)
+    producer? = command in Map.get(state.producers, entity, [])
+
+    cond do
+      removal != nil ->
+        {^name, via} = removal
+        {:removed_by_command, command, via.name, name}
+
+      producer? and application(state, command, entity, name) == :cannot ->
+        {:re_produced_without, command, entity, name}
+
+      true ->
+        nil
+    end
+  end
+
+  # Whether a declaration of the command carries the trait in its from list,
+  # whatever the arguments: prefer the consumer first while the loss is uncertain.
+  defp may_remove?(state, command, entity, name) do
+    Enum.any?(declared_traits(state, command, entity), &(name in List.wrap(&1.from)))
+  end
+
+  # Whether executing the command applies the trait name to the entity for
+  # sure, maybe, or cannot.
+  defp application(state, command, entity, name) do
+    args = literal_args(state, command)
+
+    statuses =
+      for trait <- declared_traits(state, command, entity),
+          trait.name == name,
+          do: firing(state, command, trait, args)
+
+    cond do
+      :sure in statuses -> :sure
+      :maybe in statuses -> :maybe
+      true -> :cannot
+    end
   end
 
   # The trait names executing the command certainly strips from the entity,
@@ -1114,13 +1372,21 @@ defmodule SeedFactory.Requirements.Solver do
     end)
   end
 
-  defp forced_before?(_state, nil, _command), do: false
+  defp before_consumer?(_requires, nil, _command), do: true
 
-  defp forced_before?(state, exec, command) do
-    reaches?(state.requires, exec, command)
+  defp before_consumer?(requires, consumer, command) do
+    reaches?(requires, consumer, command)
   end
 
-  defp order_producers_and_deleters(state) do
+  # The leaf: several chosen commands producing one entity are legal only when
+  # every chosen deleter of that entity fits between two of its producers, in
+  # an order compatible with the dependencies. An entity already sitting in
+  # the context joins as a virtual first producer pinned to the head of the
+  # sequence. The sequence chosen for one entity constrains the others, so the
+  # entities are ordered by a joint backtracking search. The ordering edges
+  # become part of the plan, and with them in place the state every consumer
+  # reads is checked.
+  defp leaf_check(state) do
     # A single chosen producer with several chosen deleters has nothing to
     # interleave, but the count check below still has to refuse it.
     multi =
@@ -1138,41 +1404,18 @@ defmodule SeedFactory.Requirements.Solver do
           several_chosen_deleters?(state, entity),
           do: {entity, [@context_instance]}
 
-    case order_multi_producers(state, multi ++ producerless, state.extra_edges) do
-      {:ok, edges} ->
-        {:ok, %{state | extra_edges: edges}}
-
-      {:unorderable, entity, [@context_instance], deleters} ->
-        exception =
-          SeedFactory.UnproducibleEntityError.exception(
-            entity: entity,
-            required_by: nil,
-            commands: deleters,
-            cause: :over_deleted
-          )
-
-        {:fail, %{kind: :other, exception: exception}}
-
-      {:unorderable, entity, producers, _deleters} ->
-        exception =
-          SeedFactory.UnproducibleEntityError.exception(
-            entity: entity,
-            required_by: nil,
-            commands: producers -- [@context_instance],
-            cause: :unorderable
-          )
-
-        {:fail, %{kind: :other, exception: exception}}
-    end
+    order_multi_producers(state, multi ++ producerless, state.extra_edges)
   end
 
-  defp order_multi_producers(_state, [], edges), do: {:ok, edges}
+  defp order_multi_producers(state, [], edges) do
+    check_consumers(%{state | extra_edges: edges})
+  end
 
   defp order_multi_producers(state, [{entity, producers} | rest], edges) do
     deleters =
       chosen_deleters(state, Map.get(state.candidate_graph.deleters_by_entity, entity, []))
 
-    unorderable = {:unorderable, entity, producers, deleters}
+    unorderable = {:fail, unorderable_failure(entity, producers, deleters)}
 
     Enum.reduce_while(consistent_sequences(state, producers, deleters, edges), unorderable, fn
       sequence, _failure ->
@@ -1182,9 +1425,33 @@ defmodule SeedFactory.Requirements.Solver do
                edges ++ consecutive_edges(sequence, edges, state)
              ) do
           {:ok, _} = ok -> {:halt, ok}
-          {:unorderable, _, _, _} = failure -> {:cont, failure}
+          {:fail, _} = failure -> {:cont, failure}
         end
     end)
+  end
+
+  defp unorderable_failure(entity, [@context_instance], deleters) do
+    exception =
+      SeedFactory.UnproducibleEntityError.exception(
+        entity: entity,
+        required_by: nil,
+        commands: deleters,
+        cause: :over_deleted
+      )
+
+    %{kind: :other, exception: exception}
+  end
+
+  defp unorderable_failure(entity, producers, _deleters) do
+    exception =
+      SeedFactory.UnproducibleEntityError.exception(
+        entity: entity,
+        required_by: nil,
+        commands: producers -- [@context_instance],
+        cause: :unorderable
+      )
+
+    %{kind: :other, exception: exception}
   end
 
   defp chosen_deleters(state, deleters) do

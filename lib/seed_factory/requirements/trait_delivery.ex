@@ -5,23 +5,37 @@ defmodule SeedFactory.Requirements.TraitDelivery do
   alias SeedFactory.Params
   alias SeedFactory.Trait
 
-  # Predicts whether the remaining steps leave every requested trait on its
-  # entity, with the very args the execution will use. The only unknowns are
+  # Predicts whether the remaining steps leave every required trait on its
+  # entity by the time its consumer runs, with the very args the execution
+  # will use. A requirement is `{entity, trait_names, consumer}`: the consumer
+  # is a planned command reading the entity through a parameter, or nil for
+  # the request, which reads it at the end of the plan. The only unknowns are
   # the instances of the entities the remaining steps produce or update
   # before a given step: a declaration whose firing depends on one leaves the
-  # trait's verdict open. Returns the traits still open, so the caller
+  # trait's verdict open. Returns the requirements still open, so the caller
   # predicts them again before the next step, when more instances exist; a
   # settled trait stays settled, as the remaining steps are deterministic. A
   # certain loss raises before the first step after which the trait cannot
   # come back.
-  def check!(context, steps, requested) do
-    for {entity, trait_names} <- requested,
-        open = Enum.filter(trait_names, &(check_trait!(context, steps, entity, &1) == :uncertain)),
+  def check!(context, steps, required) do
+    for {entity, trait_names, consumer} <- required,
+        preceding = steps_before(steps, consumer),
+        open =
+          Enum.filter(
+            trait_names,
+            &(check_trait!(context, preceding, entity, &1, consumer) == :uncertain)
+          ),
         open != [],
-        do: {entity, open}
+        do: {entity, open, consumer}
   end
 
-  defp check_trait!(context, steps, entity, trait) do
+  defp steps_before(steps, nil), do: steps
+
+  defp steps_before(steps, consumer) do
+    Enum.take_while(steps, fn {command_name, _args} -> command_name != consumer end)
+  end
+
+  defp check_trait!(context, steps, entity, trait, consumer) do
     binding_name = Context.binding_name(context, entity)
     present? = trait in Context.current_trait_names(context, binding_name)
 
@@ -37,6 +51,7 @@ defmodule SeedFactory.Requirements.TraitDelivery do
           entity: entity,
           binding: binding_name,
           trait: trait,
+          required_by: consumer,
           removed_by: command,
           removed_when: :planned
 
@@ -45,6 +60,7 @@ defmodule SeedFactory.Requirements.TraitDelivery do
           entity: entity,
           binding: binding_name,
           trait: trait,
+          required_by: consumer,
           removed_by: executed_remover(context, binding_name, trait),
           removed_when: :executed
     end

@@ -39,6 +39,7 @@ defmodule SeedFactory.Schema do
     SeedFactory will automatically execute a command that produces it.
   * `:with_traits` - a list of trait names. Requires `:entity` option.
     When the entity doesn't exist in the context, SeedFactory will produce it with the specified traits.
+    The plan guarantees the traits at the moment the command runs.
 
     > #### Note {: .info}
     > `:with_traits` is only used for automatic dependency resolution. If you explicitly pass

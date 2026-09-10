@@ -20,8 +20,9 @@ defmodule SeedFactory.Requirements do
   alias SeedFactory.Requirements.TraitDelivery
 
   # `requested` lists the `{entity, trait_names}` pairs the execution must
-  # deliver. pre_produce knowingly withholds the requested entities, so it
-  # requests nothing here.
+  # deliver at the end of the plan; the parameters of the steps add what they
+  # need when they run. pre_produce knowingly withholds the requested
+  # entities, so it requests nothing here.
   @enforce_keys [:context, :graph, :requested]
   defstruct [:context, :graph, :requested]
 
@@ -46,7 +47,7 @@ defmodule SeedFactory.Requirements do
 
   # The args of every step are fixed before anything runs: the generators are
   # called here, once, and the execution reuses the values. That lets the
-  # delivery of the requested traits be predicted before each step, for the
+  # delivery of the required traits be predicted before each step, for the
   # traits whose verdict is still open.
   def apply_to_context(requirements, exec_fn) do
     context = requirements.context
@@ -55,16 +56,15 @@ defmodule SeedFactory.Requirements do
     sorted_nodes =
       graph
       |> CommandGraph.link_producers_of_required_entities(context)
-      |> CommandGraph.deprioritize_nodes_that_delete_entities_or_remove_traits(context)
       |> CommandGraph.topologically_sorted_nodes()
 
     steps = Enum.map(sorted_nodes, fn node -> {node.name, step_args(context, node)} end)
+    required = trait_requirements(requirements.requested, context, steps)
 
     {context, _open} =
       steps
       |> Enum.with_index()
-      |> Enum.reduce({context, requirements.requested}, fn {{command_name, args}, index},
-                                                           {context, open} ->
+      |> Enum.reduce({context, required}, fn {{command_name, args}, index}, {context, open} ->
         open = predict_open(open, context, Enum.drop(steps, index))
 
         try do
@@ -81,6 +81,20 @@ defmodule SeedFactory.Requirements do
 
   defp predict_open([], _context, _steps), do: []
   defp predict_open(open, context, steps), do: TraitDelivery.check!(context, steps, open)
+
+  # The traits of the request, read at the end of the plan, and the traits the
+  # parameters of every step ask for, read when the step runs.
+  defp trait_requirements(requested, context, steps) do
+    request = Enum.map(requested, fn {entity, trait_names} -> {entity, trait_names, nil} end)
+
+    consumed =
+      for {command_name, _args} <- steps,
+          {entity, trait_names} <- Context.fetch_command!(context, command_name).required_entities,
+          MapSet.size(trait_names) > 0,
+          do: {entity, MapSet.to_list(trait_names), command_name}
+
+    request ++ consumed
+  end
 
   defp step_args(context, node) do
     params = Context.fetch_command!(context, node.name).params
