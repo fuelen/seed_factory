@@ -1010,7 +1010,7 @@ defmodule SeedFactoryTest do
       # in order to :activate user, we execute :activate_user command to move user from :pending to :active status
       assert_raise SeedFactory.TraitRestrictionConflictError,
                    "cannot apply traits [:active] to :user as a requirement for :publish_project command, " <>
-                     "the entity was requested with the following traits: [:pending, :admin]",
+                     "the entity was requested with the following traits: [:admin, :pending]",
                    fn ->
                      produce(context, [:project, user: [:pending, :admin]])
                    end
@@ -1092,18 +1092,18 @@ defmodule SeedFactoryTest do
     test "multiple traits which use the same parameter of the entity", context do
       # same entity with conflicting traits
       assert_raise SeedFactory.TraitResolutionError,
-                   "cannot satisfy trait :admin for entity :user (requested trait)\n" <>
-                     "- candidate command :create_pending_user already runs with role: :normal " <>
-                     "for trait :normal, which conflicts with role: :admin\n" <>
+                   "cannot satisfy trait :normal for entity :user (requested trait)\n" <>
+                     "- candidate command :create_pending_user already runs with role: :admin " <>
+                     "for trait :admin, which conflicts with role: :normal\n" <>
                      "- candidate command :create_active_user also produces :user, " <>
                      "already produced by :create_pending_user in this plan",
                    fn -> produce(context, user: [:normal, :admin]) end
 
       # same entity with conflicting traits, deep map comparison
       assert_raise SeedFactory.TraitResolutionError,
-                   "cannot satisfy trait :free_plan for entity :user (requested trait)\n" <>
-                     "- candidate command :activate_user already runs with finances.plan: :paid " <>
-                     "for trait :paid_plan, which conflicts with finances.plan: :free\n" <>
+                   "cannot satisfy trait :paid_plan for entity :user (requested trait)\n" <>
+                     "- candidate command :activate_user already runs with finances.plan: :free " <>
+                     "for trait :free_plan, which conflicts with finances.plan: :paid\n" <>
                      "- candidate command :create_active_user also produces :user, " <>
                      "already produced by :create_pending_user in this plan",
                    fn -> produce(context, user: [:paid_plan, :free_plan]) end
@@ -1253,8 +1253,8 @@ defmodule SeedFactoryTest do
     test "raises when conflicting traits rely on rejected commands", context do
       expected =
         """
-        cannot satisfy trait :production_ready for entity :integration_pipeline (requested trait)
-        - candidate command :bootstrap_production_pipeline also produces :integration_pipeline, already produced by :bootstrap_sandbox_pipeline in this plan
+        cannot satisfy trait :sandbox_ready for entity :integration_pipeline (requested trait)
+        - candidate command :bootstrap_sandbox_pipeline also produces :integration_pipeline, already produced by :bootstrap_production_pipeline in this plan
         """
         |> String.trim_trailing()
 
@@ -1263,13 +1263,11 @@ defmodule SeedFactoryTest do
       end)
     end
 
-    test "raises when transition trait prerequisites were rejected", context do
+    test "raises when a requested trait conflicts with the prerequisite of another", context do
       expected =
         """
-        cannot satisfy trait :deployment_promoted for entity :integration_pipeline (requested trait)
-        - candidate command :promote_pipeline failed on the prerequisites below
-        - prerequisite trait :sandbox_ready required by :deployment_promoted cannot be satisfied
-          - candidate command :bootstrap_sandbox_pipeline also produces :integration_pipeline, already produced by :bootstrap_production_pipeline in this plan
+        cannot satisfy trait :production_ready for entity :integration_pipeline (requested trait)
+        - candidate command :bootstrap_production_pipeline also produces :integration_pipeline, already produced by :bootstrap_sandbox_pipeline in this plan
         """
         |> String.trim_trailing()
 

@@ -68,15 +68,26 @@ defmodule SeedFactory.Requirements.Solver do
   # Every build returns the plan and the top-level request it serves, as
   # `{entity, trait_names}` pairs, so the execution can check the delivery.
   def build_graph(context, entities_with_trait_names) do
-    restrictions = Restrictions.new(context, entities_with_trait_names)
-    candidate_graph = CandidateGraph.new(context, restrictions, entities_with_trait_names)
+    request = canonical(entities_with_trait_names)
+    restrictions = Restrictions.new(context, request)
+    candidate_graph = CandidateGraph.new(context, restrictions, request)
     {solve_and_materialize(candidate_graph, :produce), requested(candidate_graph)}
   end
 
   def build_graph_for_pre_produce(context, entities_with_trait_names) do
-    restrictions = Restrictions.new(context, entities_with_trait_names)
-    candidate_graph = CandidateGraph.new(context, restrictions, entities_with_trait_names)
+    request = canonical(entities_with_trait_names)
+    restrictions = Restrictions.new(context, request)
+    candidate_graph = CandidateGraph.new(context, restrictions, request)
     {solve_and_materialize(candidate_graph, :pre_produce), requested(candidate_graph)}
+  end
+
+  # A request is a set. The search reads it in one order, the entities and
+  # the traits of each by name, so the plan does not depend on how the
+  # request is written.
+  defp canonical(entities_with_trait_names) do
+    entities_with_trait_names
+    |> Enum.map(fn {entity, trait_names} -> {entity, Enum.sort(trait_names)} end)
+    |> Enum.sort_by(fn {entity, _trait_names} -> entity end)
   end
 
   def build_graph_for_command(context, command, initial_input) do
@@ -166,8 +177,9 @@ defmodule SeedFactory.Requirements.Solver do
 
   # The stack keeps demands in decision order: newer pushes first, the trait
   # demands of one request entry before its entity demand, sibling entries in
-  # request (or parameter) order. Traits therefore commit greedily in request
-  # order and a later conflicting trait fails on its own turn.
+  # the canonical request order (or the parameter order). Traits therefore
+  # commit greedily in that order and a later conflicting trait fails on its
+  # own turn.
   defp next_step(state) do
     results = Enum.map(state.stack, fn demand -> {demand, viable_options(state, demand)} end)
 

@@ -4,58 +4,58 @@ defmodule SeedFactory.LosingDeclarationReuseTest do
   defmodule Schema do
     use SeedFactory.Schema
 
-    # The :verified declaration of :verify_user is listed first, but the trait
-    # is won by reuse of :create_user, already chosen for the :user needed by
-    # :profile. :verify_user still joins the plan for :badge. A later demand
-    # for :verified (from :send_invoice) must skip the losing declaration even
-    # though its command is chosen and listed first, or :verify_user would run
-    # with the losing pattern's :email.
-    command :verify_user do
-      param :user, entity: :user
+    # The :verified declaration of :verify_account is listed first, but the
+    # account is demanded before the trait is decided, so :create_account is
+    # chosen first and the trait reuses it. :verify_account still joins the
+    # plan for :badge. A later demand for :verified (from :send_invoice) must
+    # skip the losing declaration even though its command is chosen and listed
+    # first, or :verify_account would run with the losing pattern's :email.
+    command :verify_account do
+      param :account, entity: :account
       param :method, value: :none
 
-      resolve(fn args -> {:ok, %{user: :verified_user, badge: args.method}} end)
+      resolve(fn args -> {:ok, %{account: :verified_account, badge: args.method}} end)
 
-      update :user
+      update :account
       produce :badge
     end
 
-    command :create_user do
-      resolve(fn _ -> {:ok, %{user: :user1}} end)
+    command :create_account do
+      resolve(fn _ -> {:ok, %{account: :account1}} end)
 
-      produce :user
+      produce :account
     end
 
-    command :onboard_user do
-      param :user, entity: :user
+    command :onboard_account do
+      param :account, entity: :account
 
-      resolve(fn _ -> {:ok, %{user: :onboarded_user, profile: :profile1}} end)
+      resolve(fn _ -> {:ok, %{account: :onboarded_account, profile: :profile1}} end)
 
-      update :user
+      update :account
       produce :profile
     end
 
     command :send_invoice do
-      param :user, entity: :user, with_traits: [:verified]
+      param :account, entity: :account, with_traits: [:verified]
 
       resolve(fn _ -> {:ok, %{invoice: :invoice1}} end)
 
       produce :invoice
     end
 
-    trait :verified, :user do
-      exec :verify_user, args_pattern: %{method: :email}
+    trait :verified, :account do
+      exec :verify_account, args_pattern: %{method: :email}
     end
 
-    trait :verified, :user do
-      exec :create_user
+    trait :verified, :account do
+      exec :create_account
     end
   end
 
   use SeedFactory.Test, schema: Schema
 
   test "a losing declaration listed before the winner is skipped by a later demand", context do
-    context = produce(context, [:profile, {:user, [:verified]}, :badge, :invoice])
+    context = produce(context, [:profile, {:account, [:verified]}, :badge, :invoice])
 
     assert context.profile == :profile1
     assert context.invoice == :invoice1
