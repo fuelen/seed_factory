@@ -2,7 +2,8 @@
 
 Thirteen generators build random schemas and programs, run them through
 `produce`, `pre_produce`, `exec` and `pre_exec`, and classify the outcome
-of every step. Two things make the tier useful:
+of every step; three exhaustive oracles check the ordering of trait reads
+against an independent model. Two things make the generators useful:
 
 * an absolute check: no outcome may belong to an alarming class (see
   `SeedFactory.StressOutcomes`): a hang, a requested entity or trait
@@ -88,6 +89,36 @@ Not every changed outcome is a finding. Classes accepted knowingly:
 
 What matters is a new `:ok → raise` class, or any alarming outcome on the new
 side.
+
+## The ordering oracle
+
+`ordering_oracle_test.exs` is not random. Four commands update one entity
+carrying two traits, each command may demand any subset of the two traits,
+and the test builds all 256 such schemas. For every schema an independent
+model walks the 24 execution orders and decides whether one satisfies every
+demand; `produce` is then asked for the four outputs in all 24 request orders
+and has to find a plan exactly when the model says one exists, or refuse
+before any resolver runs. Unlike the generators, it proves the search
+complete on this shape: a refusal it accepts is a refusal the model confirms.
+Its scope is the ordering of reads and losses of traits; deleting commands,
+re-producers and alternative producers are outside it.
+
+`conditional_ordering_oracle_test.exs` repeats the model with one re-applier
+declared under an `args_pattern` over a generated param, built once with the
+generator returning true and once false: 512 schemas, each requested in the
+forward and the reverse order of its outputs. The search cannot judge that
+declaration, so the test proves that the prediction before the consumer's
+step, with the generated value fixed, agrees with the model exactly where the
+search alone cannot.
+
+`dependent_ordering_oracle_test.exs` adds dependencies: every command may
+require the output of one other command, so a reader can be forced after the
+command stripping its trait and the plan has to shelter it, with a certain
+re-applier or a conditional one. The model checks the dependencies along with
+the traits. By default one command demands traits and the family is
+exhaustive over the acyclic dependency patterns and both generator values
+(416 schemas); `ORACLE_FULL=1` runs every demand combination, tens of
+thousands of schemas, for a long local run.
 
 ## Adding a generator
 
