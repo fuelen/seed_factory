@@ -31,6 +31,9 @@ defmodule SeedFactory.Requirements.CommandGraph.Node do
     |> squash_args()
   end
 
+  # The patterns riding one node agree with each other (the search admits a
+  # declaration onto a command only when its pattern fits the patterns
+  # already there), so a pattern can only conflict with generated args.
   defp squash_args(traits, initial_args \\ %{}) do
     Enum.reduce(traits, initial_args, fn trait, acc ->
       case trait.exec_step do

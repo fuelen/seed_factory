@@ -13,9 +13,12 @@ defmodule SeedFactory.Requirements.Solver do
   #   * demands live on a stack, the newest first, mirroring the LIFO order of
   #     the conflict groups the previous core resolved;
   #   * a demand with a single viable option is applied before any decision
-  #     (unit propagation);
-  #   * an already-chosen command satisfying a demand is reused, never
-  #     duplicated;
+  #     (unit propagation), and so is a trait demand a chosen command can
+  #     satisfy, with the other declarations kept as fallbacks;
+  #   * an already-chosen command satisfying an entity demand is reused, never
+  #     duplicated; for a trait demand its declaration is reused first, and
+  #     the other declarations follow as fallbacks, so a plan failing on the
+  #     reuse can try another route;
   #   * among real decisions, the first option that does not leave another
   #     demand without viable candidates wins (the safety lookahead of the
   #     previous core), then any safe option, then the first option;
@@ -175,9 +178,13 @@ defmodule SeedFactory.Requirements.Solver do
         {_, {:zero, failure}} = zero
         {:fail, failure}
 
-      unit = Enum.find(results, fn {_, result} -> match?({:options, [_]}, result) end) ->
-        {demand, {:options, [option]}} = unit
-        {:decide, demand, [option]}
+      unit =
+          Enum.find(results, fn {_, result} ->
+            match?({:options, [_]}, result) or
+                match?({:options, [{:decl, _, :reuse} | _]}, result)
+          end) ->
+        {demand, {:options, options}} = unit
+        {:decide, demand, options}
 
       results == [] ->
         :done
@@ -255,31 +262,26 @@ defmodule SeedFactory.Requirements.Solver do
         {:zero, %{kind: :other, exception: exception}}
 
       :continue ->
-        declarations = Enum.reject(node.declarations, &lost?(state, &1))
+        viable =
+          for decl <- node.declarations,
+              not lost?(state, decl),
+              decl.command != demander,
+              declaration_failure(state, demander, decl) == nil,
+              do: decl
 
-        reuse =
-          Enum.find(declarations, fn decl ->
-            decl.command != demander and MapSet.member?(state.chosen, decl.command) and
-              cycle_ok?(state, demander, decl.command)
-          end)
+        {reused, fresh} = Enum.split_with(viable, &MapSet.member?(state.chosen, &1.command))
 
-        if reuse do
-          {:options, [{:decl, reuse, :reuse}]}
-        else
-          viable =
-            for decl <- declarations,
-                decl.command != demander,
-                viability_failure(state, demander, decl.command) == nil,
-                do: {:decl, decl, :choose}
+        options =
+          Enum.map(reused, &{:decl, &1, :reuse}) ++
+            order_declarations(state, Enum.map(fresh, &{:decl, &1, :choose}))
 
-          case order_declarations(state, viable) do
-            [] ->
-              rejections = declaration_rejections(state, node, demander)
-              {:zero, trait_failure(entity, name, demander, {:commands_rejected, rejections})}
+        case options do
+          [] ->
+            rejections = declaration_rejections(state, node, demander)
+            {:zero, trait_failure(entity, name, demander, {:commands_rejected, rejections})}
 
-            viable ->
-              {:options, viable}
-          end
+          options ->
+            {:options, options}
         end
     end
   end
@@ -343,12 +345,27 @@ defmodule SeedFactory.Requirements.Solver do
 
   # The requested traits' declarations of the command ride the edge of an
   # entity demand without traits of its own, minus the declarations that lost
-  # their trait's resolution: the winner applies the trait, not them.
+  # their trait's resolution: the winner applies the trait, not them. A
+  # declaration whose pattern contradicts another rider's, or a pattern
+  # already fixed on the command, stays off the edge: the trait demands
+  # decide between such declarations, with backtracking.
   defp edge_traits(state, node, preferred?, cmd) do
     if preferred? do
-      live_declarations(state, node, cmd)
+      riders = live_declarations(state, node, cmd)
+
+      Enum.filter(riders, fn trait ->
+        pattern_conflict(state, cmd, trait) == nil and
+          not Enum.any?(riders, &(&1 != trait and riders_conflict?(&1, trait)))
+      end)
     else
       []
+    end
+  end
+
+  defp riders_conflict?(fixed_trait, trait) do
+    case trait.exec_step.args_pattern do
+      pattern when is_map(pattern) -> fixed_pattern_conflict(fixed_trait, pattern) != nil
+      nil -> false
     end
   end
 
@@ -423,8 +440,8 @@ defmodule SeedFactory.Requirements.Solver do
 
   # Why a candidate does not pass the viability filters, nil for a viable
   # one. The filters and the failure report share this function, so they
-  # cannot drift apart. A chosen command lands here only after the reuse
-  # check refused it, which happens only on a cycle: the cycle arm reports it.
+  # cannot drift apart. A chosen command passes every filter but the cycle
+  # one, so the cycle arm is the only one to report it.
   defp viability_failure(state, demander, cmd) do
     cond do
       exception = command_collection_failure(state.candidate_graph, cmd) ->
@@ -447,6 +464,66 @@ defmodule SeedFactory.Requirements.Solver do
   # The failure report asks only about candidates the filters refused.
   defp rejection_reason(state, demander, cmd) do
     viability_failure(state, demander, cmd) || {:cycle, demander}
+  end
+
+  # A declaration is unusable when its command is, or when its args_pattern
+  # contradicts a pattern a chosen declaration already fixed on the command:
+  # the execution merges the patterns riding a command into one argument map.
+  defp declaration_failure(state, demander, decl) do
+    pattern_conflict(state, decl) || viability_failure(state, demander, decl.command)
+  end
+
+  defp pattern_conflict(state, decl) do
+    pattern_conflict(state, decl.command, decl.trait)
+  end
+
+  defp pattern_conflict(state, cmd, trait) do
+    case trait.exec_step.args_pattern do
+      pattern when is_map(pattern) ->
+        Enum.find_value(state.edges, fn {_demander, edge_cmd, traits} ->
+          if edge_cmd == cmd do
+            Enum.find_value(traits, &fixed_pattern_conflict(&1, pattern))
+          end
+        end)
+
+      nil ->
+        nil
+    end
+  end
+
+  defp fixed_pattern_conflict(fixed_trait, pattern) do
+    case fixed_trait.exec_step.args_pattern do
+      fixed when is_map(fixed) ->
+        case first_disagreement(fixed, pattern, []) do
+          nil ->
+            nil
+
+          {path, fixed_value, value} ->
+            {:args_conflict, path, fixed_value, fixed_trait.name, value}
+        end
+
+      nil ->
+        nil
+    end
+  end
+
+  defp first_disagreement(fixed, pattern, path) do
+    Enum.find_value(pattern, fn {key, value} ->
+      case Map.fetch(fixed, key) do
+        :error ->
+          nil
+
+        {:ok, ^value} ->
+          nil
+
+        {:ok, other}
+        when is_map(other) and is_map(value) and not is_struct(other) and not is_struct(value) ->
+          first_disagreement(other, value, path ++ [key])
+
+        {:ok, other} ->
+          {path ++ [key], other, value}
+      end
+    end)
   end
 
   defp viable_conflict_reason(state, demander, cmd) do
@@ -714,8 +791,9 @@ defmodule SeedFactory.Requirements.Solver do
   # The winner of a trait demand is its only exec: the other declarations of
   # the name lose, so they neither ride an edge nor make their command
   # preferred for an entity, and a later demand for the trait reuses the
-  # winner. Their commands stay available for everything else. Backtracking
-  # brings the declarations back when the winner's subtree fails.
+  # winner. A loser already riding an edge, planned before the trait was
+  # resolved, leaves it. Their commands stay available for everything else.
+  # Backtracking brings the declarations back when the winner's subtree fails.
   defp lose_other_declarations(state, entity, name, winner) do
     losers =
       state.candidate_graph.traits
@@ -724,7 +802,14 @@ defmodule SeedFactory.Requirements.Solver do
       |> Enum.reject(&(&1.command == winner.command))
       |> Enum.map(&{entity, name, &1.command})
 
-    %{state | lost: MapSet.union(state.lost, MapSet.new(losers))}
+    lost = MapSet.union(state.lost, MapSet.new(losers))
+
+    edges =
+      Enum.map(state.edges, fn {demander, cmd, traits} ->
+        {demander, cmd, Enum.reject(traits, &MapSet.member?(lost, {&1.entity, &1.name, cmd}))}
+      end)
+
+    %{state | lost: lost, edges: edges}
   end
 
   defp choose(state, cmd, phantom?) do
@@ -817,6 +902,9 @@ defmodule SeedFactory.Requirements.Solver do
 
         lost?(state, decl) ->
           {cmd, {:lost_to, node.name, Map.fetch!(state.trait_execs, {node.entity, node.name})}}
+
+        conflict = pattern_conflict(state, decl) ->
+          {cmd, conflict}
 
         true ->
           {cmd, rejection_reason(state, demander, cmd)}

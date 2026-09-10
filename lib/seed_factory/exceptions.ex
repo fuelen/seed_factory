@@ -526,6 +526,13 @@ defmodule SeedFactory.RejectionReason do
     "lost the #{inspect(trait)} resolution to #{inspect(winner)} in this plan"
   end
 
+  def clause({:args_conflict, path, fixed_value, fixed_trait, value}) do
+    key = Enum.map_join(path, ".", &to_string/1)
+
+    "already runs with #{key}: #{inspect(fixed_value)} for trait #{inspect(fixed_trait)}, " <>
+      "which conflicts with #{key}: #{inspect(value)}"
+  end
+
   def clause({:collection, exception}) do
     "was rejected by a parameter check (#{exception.__struct__ |> Module.split() |> List.last()})"
   end

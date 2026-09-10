@@ -53,6 +53,13 @@ defmodule SeedFactory.LosingDeclarationCommandTest do
     assert context.badge == :none
   end
 
+  test "a rider planned before the trait is resolved leaves the plan when it loses", context do
+    context = produce(context, [:badge, user: [:verified]])
+
+    assert context.badge == :none
+    assert context.__seed_factory_meta__.current_traits.user == [:verified]
+  end
+
   test "a later demand for the trait reuses the winner, not the losing declaration", context do
     context = produce(context, [{:user, [:verified]}, :badge, :invoice])
 
