@@ -399,37 +399,6 @@ defmodule SeedFactory.TraitResolutionError do
   defp indent_prefix(indent), do: String.duplicate(" ", indent)
 end
 
-defmodule SeedFactory.ConflictingTraitsError do
-  defexception [:message, :conflicts]
-
-  def exception(opts) when is_list(opts) do
-    conflicts = Keyword.fetch!(opts, :conflicts)
-
-    message =
-      conflicts
-      |> Enum.sort_by(&elem(&1, 0))
-      |> Enum.map(fn {entity, commands_with_traits} ->
-        commands_description =
-          commands_with_traits
-          |> Enum.sort_by(&elem(&1, 0))
-          |> Enum.map(fn {command, traits} ->
-            trait_names = traits |> Enum.map(& &1.name) |> Enum.sort()
-            "  - #{inspect(command)} (from traits #{inspect(trait_names)})"
-          end)
-          |> Enum.join("\n")
-
-        "multiple requested traits produce the same entity #{inspect(entity)} via different commands:\n" <>
-          commands_description
-      end)
-      |> Enum.join("\n\n")
-
-    %__MODULE__{
-      message: message,
-      conflicts: conflicts
-    }
-  end
-end
-
 defmodule SeedFactory.ExecError do
   defexception [
     :command,

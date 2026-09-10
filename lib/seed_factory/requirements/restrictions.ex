@@ -51,45 +51,11 @@ defmodule SeedFactory.Requirements.Restrictions do
     command_names_and_traits_by_entity =
       build_command_names_and_traits_by_entity(context, requested_traits)
 
-    validate_no_conflicting_traits!(
-      command_names_and_traits_by_entity,
-      requested_trait_names_by_entity
-    )
-
     %__MODULE__{
       requested_trait_names_by_entity: requested_trait_names_by_entity,
       subsequent_traits: Map.new(subsequent_traits),
       command_names_and_traits_by_entity: command_names_and_traits_by_entity
     }
-  end
-
-  defp validate_no_conflicting_traits!(
-         command_names_and_traits_by_entity,
-         requested_trait_names_by_entity
-       ) do
-    # Only check entities that were NOT explicitly requested with traits.
-    # If an entity is explicitly requested, its traits take priority over side effects.
-    entities_to_check =
-      Map.drop(command_names_and_traits_by_entity, Map.keys(requested_trait_names_by_entity))
-
-    conflicts =
-      Enum.flat_map(entities_to_check, fn
-        {_entity, {[_single_command], _traits}} ->
-          []
-
-        {entity, {_command_names, traits}} ->
-          source_entities = traits |> Enum.map(& &1.entity) |> Enum.uniq()
-
-          if match?([_, _ | _], source_entities) do
-            [{entity, Enum.group_by(traits, & &1.exec_step.command_name)}]
-          else
-            []
-          end
-      end)
-
-    if conflicts != [] do
-      raise SeedFactory.ConflictingTraitsError, conflicts: conflicts
-    end
   end
 
   defp build_command_names_and_traits_by_entity(context, requested_traits) do

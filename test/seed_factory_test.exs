@@ -648,21 +648,18 @@ defmodule SeedFactoryTest do
              }
     end
 
-    test "multiple requested traits producing the same entity via different commands raises ConflictingTraitsError",
-         context do
-      error =
-        assert_raise SeedFactory.ConflictingTraitsError, fn ->
-          produce(context, [
-            :candidate_welcome_notification,
-            approval_process: [:started],
-            approved_candidate: [:approved_immediately]
-          ])
-        end
-
-      assert error.message ==
-               "multiple requested traits produce the same entity :candidate_profile via different commands:\n" <>
-                 "  - :create_approved_candidate (from traits [:approved_immediately])\n" <>
-                 "  - :start_approval_process (from traits [:started])"
+    test "requested traits whose only commands produce the same entity are refused", context do
+      assert_raise SeedFactory.TraitResolutionError,
+                   "cannot satisfy trait :approved_immediately for entity :approved_candidate (requested trait)\n" <>
+                     "- candidate command :create_approved_candidate also produces :candidate_profile, " <>
+                     "already produced by :start_approval_process in this plan",
+                   fn ->
+                     produce(context, [
+                       :candidate_welcome_notification,
+                       approval_process: [:started],
+                       approved_candidate: [:approved_immediately]
+                     ])
+                   end
     end
 
     test "same traits can be applied by multiple commands", context do

@@ -1268,7 +1268,7 @@ defmodule SeedFactory.Requirements.Solver do
   end
 
   # Whether a declaration of the command carries the trait in its from list,
-  # whatever the arguments: prefer the consumer first while the loss is uncertain.
+  # whatever the arguments.
   defp may_remove?(state, command, entity, name) do
     Enum.any?(declared_traits(state, command, entity), &(name in List.wrap(&1.from)))
   end
