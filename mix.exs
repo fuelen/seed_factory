@@ -6,7 +6,7 @@ defmodule SeedFactory.MixProject do
     [
       app: :seed_factory,
       version: @version,
-      elixir: "~> 1.15",
+      elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       consolidate_protocols: Mix.env() != :dev,
       start_permanent: Mix.env() == :prod,
