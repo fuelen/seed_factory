@@ -632,15 +632,22 @@ defmodule SeedFactory.Requirements.Solver do
   # demands expire exactly like the demands of removed group members today.
   defp safe?(state, item, option) do
     case option do
-      {:choose, _cmd, _traits} -> safe_after?(apply_option(state, item, option))
-      {:decl, _decl, :choose} -> safe_after?(apply_option(state, item, option))
+      {:choose, _cmd, _traits} -> safe_after?(state, apply_option(state, item, option))
+      {:decl, _decl, :choose} -> safe_after?(state, apply_option(state, item, option))
       _reuse_or_opt -> true
     end
   end
 
-  defp safe_after?(state) do
+  # Only the damage of the option counts: the demands it pushes must be
+  # viable, and a demand already pending or reachable must not lose its last
+  # candidate. A demand dead before the option, the demand of a candidate the
+  # context already rules out, is no reason to avoid it.
+  defp safe_after?(before, state) do
+    pushed = state.stack -- before.stack
+
     not Enum.any?(state.stack ++ soft_demands(state), fn demand ->
-      match?({:zero, _}, viable_options(state, demand))
+      match?({:zero, _}, viable_options(state, demand)) and
+        (demand in pushed or not match?({:zero, _}, viable_options(before, demand)))
     end)
   end
 
