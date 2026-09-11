@@ -35,7 +35,7 @@ This section provides a brief overview of the API. For comprehensive explanation
 
 To use the library, define a schema with commands that describe the processes of your application. When a command is executed it modifies the context by producing/updating/deleting entities.
 
-Entities can have traits — labels that describe how an entity was created or what state it is in. Traits can build on each other using `from` (e.g. `:active` requires `:pending` first) and can be tied to specific argument values using `args_pattern`.
+Entities can have traits — labels that describe how an entity was created or what state it is in. `from` marks a transition: `:active` declared `from :pending` replaces `:pending`, so the entity goes through `:pending` and leaves it. A trait that only adds a property is declared without `from`. Traits can also be tied to specific argument values using `args_pattern`.
 
 ### Schema example
 
@@ -84,7 +84,7 @@ defmodule MyApp.SeedFactorySchema do
     exec :create_user
   end
 
-  # :active requires :pending first — :activate_user replaces :pending with :active
+  # :activate_user replaces :pending with :active
   trait :active, :user do
     from :pending
     exec :activate_user
@@ -240,7 +240,7 @@ IO.inspect(ctx.__seed_factory_meta__)
 
 ```sh
 mix test               # the suite
-mix test --only stress # the stress tier: 13 generators, about 4,000 schemas
+mix test --only stress # the stress tier: 13 generators and 3 exhaustive oracles
 mix coveralls          # coverage
 ```
 

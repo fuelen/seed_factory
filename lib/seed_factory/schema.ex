@@ -39,7 +39,8 @@ defmodule SeedFactory.Schema do
     SeedFactory will automatically execute a command that produces it.
   * `:with_traits` - a list of trait names. Requires `:entity` option.
     When the entity doesn't exist in the context, SeedFactory will produce it with the specified traits.
-    The plan guarantees the traits at the moment the command runs.
+    The plan guarantees the traits at the moment the command runs. When the entity is in the context
+    without them, the plan applies them when a declaration can still fire and refuses the command otherwise.
 
     > #### Note {: .info}
     > `:with_traits` is only used for automatic dependency resolution. If you explicitly pass
@@ -161,6 +162,7 @@ defmodule SeedFactory.Schema do
 
   * `:from` - an atom or a list of atoms specifying which traits are replaced by this one.
   When a list is given, any of the listed traits will be replaced. This is useful for status transitions.
+  A trait that only adds a property, without leaving the previous state, is declared without `from`.
 
   ```elixir
   trait :pending, :user do
