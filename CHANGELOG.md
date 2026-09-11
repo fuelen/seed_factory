@@ -1,5 +1,52 @@
 # Changelog
 
+## v0.9.0 (2026-09-11)
+
+The planning behind `produce`, `pre_produce`, `exec` and `pre_exec` was rebuilt.
+
+### What you can rely on
+
+- After `produce`, every requested entity is in the context, with every requested trait. A request that cannot be honoured fails before anything runs. Previously such a request could return a context silently missing the entity or the trait, or crash halfway through the execution.
+- Plans that need an alternative are found: another command producing the entity, another route to a trait, a command re-producing an entity after a deleting command consumed it. Previously these requests failed with a false circular-dependency or trait error.
+- Entities already in the context are respected: a command re-producing one needs a deleting command in between, and the commands consuming, deleting and re-producing it run in a valid order. Previously that order could depend on command names and crash or hand a command an entity in the wrong state.
+- A command runs only once the entities its params name exist and carry the traits their `with_traits` ask for at that moment. Previously a planned command could receive an entity a later-planned command had already stripped of the trait, or one it had deleted.
+- A request is a set: the plan does not depend on the order of its entries or of the traits within an entry. Previously the entity named first could pick a producer the others then had to live with, and the same request written in another order produced different side entities and traits.
+- `pre_produce` prepares the dependencies of the requested entities even when producing everything in one `produce` call would be impossible, and never consumes an entity the request names.
+
+### What changed for schemas
+
+- The `generate` functions of params and the `generate_args` functions of trait declarations run once, while the plan is built and before any command executes; the execution reuses the values. Keep them to producing values (random data, counters), without writes to a database or a file.
+- A trait declared with `from` replaces the named trait, and a command that later asks for the replaced trait through `with_traits` is refused, where it used to run. A trait that adds a property without leaving the previous state is declared without `from`.
+
+### Requirements
+
+- Elixir 1.19 or later. The previous minimum was 1.15.
+
+### Errors
+
+A refused request explains every candidate it rejected:
+
+```
+cannot produce entity :contract: no candidate command fits the plan
+- :sign_contract would duplicate existing :contract_copy (rebind or delete it first)
+- :import_contract would duplicate existing :approval (rebind or delete it first)
+```
+
+A plan that would end without a requested trait raises `SeedFactory.MissingRequestedTraitError`, naming the command whose transition removes the trait.
+
+`SeedFactory.ConflictingTraitsError` is gone. Two requested traits whose commands would both produce the same entity are refused with the reason `also produces :x, already produced by :y in this plan`. A request one command can serve on its own now succeeds, where the removed check refused it.
+
+A request asking for a trait together with one that replaces it is refused naming the request. The message used to name a `nil` command.
+
+### Bug fixes
+
+- A requested trait consumed by a transition declared with a `from` list was silently skipped. It now raises, like a transition declared with a single `from`.
+- `with_traits` on an entity param accepted an entity that had gone through the required trait and lost it. It now raises, or uses another candidate when one exists.
+- Trait resolution gave up when the first option of a `from` list could not be satisfied. The options are now tried in the declared order.
+- A trait declared on several commands was reported as a mismatch when one executed command did not add it while another did. Every executed declaration is now reported.
+- Input for a param nested in a `param ... do ... end` container did not cover the dependency: the command producing it still ran.
+- The compile-time trait cycle check missed a cycle through a `from` edge of a shadowed declaration. Such a schema compiled and could hang `produce`.
+
 ## v0.8.2 (2026-08-18)
 
 ### Bug Fixes
