@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- Add parameterized traits: declare `args_pattern: %{age: _}` and pass a value
+  with `produce(ctx, user: [:active, age: 18])`. Parameterized traits also work
+  in `with_traits`, and their values are tracked after both `produce` and `exec`.
+
+### Changes
+
+- Validate `with_traits` references at schema compilation, reporting invalid
+  references with `Spark.Error.DslError` instead of failing during planning.
+- Reject conflicting `:as` bindings and malformed trait entries in `produce`
+  and `pre_produce` with `ArgumentError` instead of silently ignoring them.
+  Unknown traits raise `SeedFactory.UnknownTraitError`.
+- Report conflicting traits across repeated entity entries with
+  `SeedFactory.TraitRestrictionConflictError`, consistently with a single entry,
+  instead of `SeedFactory.TraitResolutionError`.
+
+### Bug fixes
+
+- Apply traits listed after `:as` in `produce` and `pre_produce` requests.
+- Fix `args_pattern` matching against structs and nested patterns against
+  scalar arguments, which previously raised exceptions.
+- Remove all occurrences of a trait during a `from` transition, including
+  traits applied by multiple commands.
+
+### Requirements
+
+- Raise the minimum Spark version to 2.7.3 (`~> 2.7 and >= 2.7.3`).
+
 ## v0.9.0 (2026-09-11)
 
 The planning behind `produce`, `pre_produce`, `exec` and `pre_exec` was rebuilt.

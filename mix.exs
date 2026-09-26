@@ -49,7 +49,7 @@ defmodule SeedFactory.MixProject do
 
   defp deps do
     [
-      {:spark, "~> 2.3"},
+      {:spark, "~> 2.7 and >= 2.7.3"},
       {:excoveralls, "~> 0.10", only: :test},
       {:ex_doc, "~> 0.27", only: :dev, runtime: false}
     ]

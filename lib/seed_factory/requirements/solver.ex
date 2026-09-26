@@ -288,6 +288,16 @@ defmodule SeedFactory.Requirements.Solver do
           Enum.map(reused, &{:decl, &1, :reuse}) ++
             order_declarations(state, Enum.map(fresh, &{:decl, &1, :choose}))
 
+        context = state.candidate_graph.context
+        binding = SeedFactory.Context.binding_name(context, entity)
+
+        options =
+          if is_tuple(name) and name in SeedFactory.Context.current_trait_names(context, binding) do
+            [:keep_current | options]
+          else
+            options
+          end
+
         case options do
           [] ->
             rejections = declaration_rejections(state, node, demander)
@@ -377,7 +387,7 @@ defmodule SeedFactory.Requirements.Solver do
 
   defp riders_conflict?(fixed_trait, trait) do
     case trait.exec_step.args_pattern do
-      pattern when is_map(pattern) -> fixed_pattern_conflict(fixed_trait, pattern) != nil
+      pattern when is_map(pattern) -> fixed_pattern_conflict(fixed_trait, trait) != nil
       nil -> false
     end
   end
@@ -495,7 +505,7 @@ defmodule SeedFactory.Requirements.Solver do
       pattern when is_map(pattern) ->
         Enum.find_value(state.edges, fn {_demander, edge_cmd, traits} ->
           if edge_cmd == cmd do
-            Enum.find_value(traits, &fixed_pattern_conflict(&1, pattern))
+            Enum.find_value(traits, &fixed_pattern_conflict(&1, trait))
           end
         end)
 
@@ -504,10 +514,15 @@ defmodule SeedFactory.Requirements.Solver do
     end
   end
 
-  defp fixed_pattern_conflict(fixed_trait, pattern) do
+  defp fixed_pattern_conflict(fixed_trait, trait) do
+    pattern = trait.exec_step.args_pattern
+
     case fixed_trait.exec_step.args_pattern do
       fixed when is_map(fixed) ->
-        case first_disagreement(fixed, pattern, []) do
+        exact_paths =
+          [{fixed_trait.exec_step.value_path, :fixed}, {trait.exec_step.value_path, :candidate}]
+
+        case first_disagreement(fixed, pattern, [], exact_paths) do
           nil ->
             nil
 
@@ -520,7 +535,7 @@ defmodule SeedFactory.Requirements.Solver do
     end
   end
 
-  defp first_disagreement(fixed, pattern, path) do
+  defp first_disagreement(fixed, pattern, path, exact_paths) do
     Enum.find_value(pattern, fn {key, value} ->
       case Map.fetch(fixed, key) do
         :error ->
@@ -531,7 +546,20 @@ defmodule SeedFactory.Requirements.Solver do
 
         {:ok, other}
         when is_map(other) and is_map(value) and not is_struct(other) and not is_struct(value) ->
-          first_disagreement(other, value, path ++ [key])
+          nested_path = path ++ [key]
+
+          if {nested_path, :fixed} in exact_paths or {nested_path, :candidate} in exact_paths do
+            merged = deep_merge(other, value)
+
+            if ({nested_path, :fixed} in exact_paths and merged !== other) or
+                 ({nested_path, :candidate} in exact_paths and merged !== value) do
+              {nested_path, other, value}
+            else
+              first_disagreement(other, value, nested_path, exact_paths)
+            end
+          else
+            first_disagreement(other, value, nested_path, exact_paths)
+          end
 
         {:ok, other} ->
           {path ++ [key], other, value}
@@ -782,6 +810,9 @@ defmodule SeedFactory.Requirements.Solver do
     state = %{state | stack: List.delete(state.stack, demand)}
 
     case {demand, option} do
+      {{:trait, _entity, _name, _demander}, :keep_current} ->
+        state
+
       {{:entity, _entity, demander, _}, {:reuse, cmd, traits}} ->
         add_edge(state, demander, cmd, traits)
 
@@ -954,12 +985,16 @@ defmodule SeedFactory.Requirements.Solver do
     # exec command, a demand elsewhere in the plan) is the real cause and
     # passes through; only prerequisite failures fold into the trait error.
     unrelated =
-      Enum.find_value(failures, fn {{:decl, decl, _mode}, failure} ->
-        if prerequisite_failure?(decl, failure) do
-          nil
-        else
+      Enum.find_value(failures, fn
+        {:keep_current, failure} ->
           failure
-        end
+
+        {{:decl, decl, _mode}, failure} ->
+          if prerequisite_failure?(decl, failure) do
+            nil
+          else
+            failure
+          end
       end)
 
     if unrelated do
@@ -1270,15 +1305,16 @@ defmodule SeedFactory.Requirements.Solver do
   end
 
   defp trait_loss(state, command, entity, name) do
-    removal = List.keyfind(effective_trait_removals(state, command, entity), name, 0)
+    args = literal_args(state, command)
+    application = application(state, command, entity, name, args)
+    removal = effective_trait_removal(state, command, entity, name, args, application)
     producer? = command in Map.get(state.producers, entity, [])
 
     cond do
       removal != nil ->
-        {^name, via} = removal
-        {:removed_by_command, command, via.name, name}
+        {:removed_by_command, command, removal.name, name}
 
-      producer? and application(state, command, entity, name) == :cannot ->
+      producer? and application == :cannot ->
         {:re_produced_without, command, entity, name}
 
       true ->
@@ -1286,46 +1322,46 @@ defmodule SeedFactory.Requirements.Solver do
     end
   end
 
-  # Whether a declaration of the command carries the trait in its from list,
-  # whatever the arguments.
+  # Whether a declaration can remove the trait through a transition or by
+  # assigning a different value of the same parameterized trait.
   defp may_remove?(state, command, entity, name) do
-    Enum.any?(declared_traits(state, command, entity), &(name in List.wrap(&1.from)))
+    Enum.any?(declared_traits(state, command, entity), &Trait.may_remove?(&1, name))
   end
 
   # Whether executing the command applies the trait name to the entity for
   # sure, maybe, or cannot.
   defp application(state, command, entity, name) do
-    args = literal_args(state, command)
-
-    statuses =
-      for trait <- declared_traits(state, command, entity),
-          trait.name == name,
-          do: firing(state, command, trait, args)
-
-    cond do
-      :sure in statuses -> :sure
-      :maybe in statuses -> :maybe
-      true -> :cannot
-    end
+    application(state, command, entity, name, literal_args(state, command))
   end
 
-  # The trait names executing the command certainly strips from the entity,
-  # each paired with the declaration whose from list carries it: a declaration
-  # that fires for sure removes its from list, and no declaration that could
-  # fire re-adds the name. Anything less certain is not refused here.
-  defp effective_trait_removals(state, command, entity) do
-    args = literal_args(state, command)
+  defp application(state, command, entity, name, args) do
+    Enum.reduce_while(declared_traits(state, command, entity), :cannot, fn trait, status ->
+      trait = Trait.for_reference(trait, name)
 
-    classified =
-      for trait <- declared_traits(state, command, entity),
-          do: {trait, firing(state, command, trait, args)}
+      if trait.name == name do
+        case firing(state, command, trait, args) do
+          :sure -> {:halt, :sure}
+          :maybe -> {:cont, :maybe}
+          :cannot -> {:cont, status}
+        end
+      else
+        {:cont, status}
+      end
+    end)
+  end
 
-    re_added = for {trait, status} <- classified, status != :cannot, do: trait.name
-
-    for {trait, :sure} <- classified,
-        removed <- List.wrap(trait.from),
-        removed not in re_added,
-        do: {removed, trait}
+  # A declaration that certainly strips this requirement, through `from` or
+  # value replacement, without any possible re-add by the same command.
+  defp effective_trait_removal(state, command, entity, name, args, application) do
+    if application == :cannot do
+      Enum.find(declared_traits(state, command, entity), fn trait ->
+        if Trait.parameterized?(trait) do
+          Trait.removal_firing(trait, name, args) == :sure
+        else
+          Trait.may_remove?(trait, name) and firing(state, command, trait, args) == :sure
+        end
+      end)
+    end
   end
 
   defp declared_traits(state, command, entity) do
@@ -1343,7 +1379,7 @@ defmodule SeedFactory.Requirements.Solver do
   defp firing(state, command, trait, args) do
     case trait.exec_step do
       %{args_pattern: pattern} when is_map(pattern) ->
-        Trait.pattern_firing(pattern, args)
+        Trait.firing(trait, args)
 
       %{args_match: nil} ->
         :sure

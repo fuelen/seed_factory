@@ -202,6 +202,21 @@ ctx = pre_produce(ctx, :user)
 # Both users belong to the same company
 ```
 
+#### Parameterized traits
+
+Parameterized traits let you create entities with specific values. Use `_` in
+`args_pattern` to mark where the supplied value goes:
+
+```elixir
+trait :age, :user do
+  exec :create_user, args_pattern: %{age: _}
+end
+
+produce(ctx, user: [:active, age: 18])
+```
+
+This creates an active user, passing `age: 18` to the `:create_user` command.
+
 #### Dynamic trait matching with `args_match` and `generate_args`
 
 For complex trait conditions that can't be expressed with simple `args_pattern`, use function-based matching:
@@ -240,7 +255,7 @@ IO.inspect(ctx.__seed_factory_meta__)
 
 ```sh
 mix test               # the suite
-mix test --only stress # the stress tier: 13 generators and 3 exhaustive oracles
+mix test --only stress # stress generators and exhaustive oracles
 mix coveralls          # coverage
 ```
 

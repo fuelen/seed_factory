@@ -215,10 +215,8 @@ defmodule SeedFactory.Context do
           |> possible_traits(instruction.entity, command.name)
           |> SeedFactory.Trait.resolve_changes(args)
 
-        traits_to_remove =
-          SeedFactory.ListUtils.intersection(current_trait_names, traits_to_remove)
-
-        new_trait_names = (current_trait_names -- traits_to_remove) ++ traits_to_add
+        {new_trait_names, traits_to_remove} =
+          SeedFactory.Trait.apply_changes(current_trait_names, traits_to_add, traits_to_remove)
 
         context
         |> update_meta(:trails, fn trails ->

@@ -1,6 +1,6 @@
 # Stress tier
 
-Thirteen generators build random schemas and programs, run them through
+Fourteen generators build random schemas and programs, run them through
 `produce`, `pre_produce`, `exec` and `pre_exec`, and classify the outcome
 of every step; three exhaustive oracles check the ordering of trait reads
 against an independent model. Two things make the generators useful:
