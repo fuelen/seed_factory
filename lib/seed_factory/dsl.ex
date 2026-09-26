@@ -80,6 +80,7 @@ defmodule SeedFactory.DSL do
       SeedFactory.Transformers.IndexCommands,
       SeedFactory.Transformers.IndexEntities,
       SeedFactory.Transformers.IndexTraits,
-      SeedFactory.Transformers.VerifyDependencies
+      SeedFactory.Transformers.VerifyDependencies,
+      SeedFactory.Transformers.VerifyTraitRequirements
     ]
 end

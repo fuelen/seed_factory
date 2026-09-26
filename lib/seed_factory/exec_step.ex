@@ -1,13 +1,16 @@
 defmodule SeedFactory.ExecStep do
   @moduledoc false
   @derive {Inspect,
-           optional: [:args_pattern, :args_match, :generate_args], except: [:__spark_metadata__]}
+           optional: [:args_pattern, :args_match, :generate_args, :value_path, :value_params],
+           except: [:__spark_metadata__]}
 
   defstruct [
     :command_name,
     :args_pattern,
     :args_match,
     :generate_args,
+    :value_path,
+    :value_params,
     __spark_metadata__: nil
   ]
 
@@ -37,7 +40,13 @@ defmodule SeedFactory.ExecStep do
         {:error, "Option args_match is required when generate_args` is specified"}
 
       true ->
-        {:ok, step}
+        paths = SeedFactory.Trait.placeholder_paths(step.args_pattern || %{})
+
+        # TraitDSL rejects multiple placeholders before Spark evaluates the pattern.
+        case paths do
+          [] -> {:ok, step}
+          [path] -> {:ok, %{step | value_path: path}}
+        end
     end
   end
 end

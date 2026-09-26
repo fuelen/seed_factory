@@ -23,7 +23,7 @@ defmodule SeedFactory.Parameter do
     generate: [type: {:fun, 0}],
     entity: [type: :atom],
     map: [type: {:fun, 1}],
-    with_traits: [type: {:list, :atom}]
+    with_traits: [type: {:list, {:or, [:atom, {:tuple, [:atom, :any]}]}}]
   ]
 
   def schema, do: @schema

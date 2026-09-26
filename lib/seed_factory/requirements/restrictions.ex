@@ -24,7 +24,8 @@ defmodule SeedFactory.Requirements.Restrictions do
         {entity_name, required_trait_names}, acc ->
           %{by_name: traits_by_name} = SeedFactory.Context.fetch_traits!(context, entity_name)
 
-          traits = fetch_traits!(traits_by_name, required_trait_names, entity_name)
+          traits =
+            Enum.flat_map(required_trait_names, &SeedFactory.Trait.fetch!(traits_by_name, &1))
 
           subsequent_traits = scan_subsequent_traits(required_trait_names, traits_by_name)
 
@@ -74,21 +75,6 @@ defmodule SeedFactory.Requirements.Restrictions do
     end)
   end
 
-  defp fetch_traits!(traits_by_name, trait_names, entity_name) do
-    Enum.flat_map(trait_names, fn trait_name ->
-      case Map.fetch(traits_by_name, trait_name) do
-        {:ok, traits} ->
-          traits
-
-        :error ->
-          raise SeedFactory.UnknownTraitError,
-            entity: entity_name,
-            trait: trait_name,
-            available: Map.keys(traits_by_name)
-      end
-    end)
-  end
-
   # The commands preferred by the requested traits go first and the remaining
   # ones behind them, so the preference decides the resolution order while the
   # alternatives stay available when the preferred commands lose their
@@ -116,7 +102,7 @@ defmodule SeedFactory.Requirements.Restrictions do
       ) do
     with {:ok, subsequent_traits} <- Map.fetch(restrictions.subsequent_traits, entity_name),
          [_ | _] = intersection <-
-           SeedFactory.ListUtils.intersection(trait_names_to_apply, subsequent_traits) do
+           Enum.filter(trait_names_to_apply, &(SeedFactory.Trait.name(&1) in subsequent_traits)) do
       {:error,
        SeedFactory.TraitRestrictionConflictError.exception(
          entity: entity_name,
@@ -141,7 +127,7 @@ defmodule SeedFactory.Requirements.Restrictions do
   defp scan_subsequent_traits(trait_names, traits_by_name, acc) do
     subsequent_trait_names =
       traits_by_name
-      |> Map.take(trait_names)
+      |> Map.take(Enum.map(trait_names, &SeedFactory.Trait.name/1))
       |> Enum.flat_map(&elem(&1, 1))
       |> Enum.flat_map(& &1.to)
 
@@ -194,7 +180,8 @@ defmodule SeedFactory.Requirements.Restrictions do
          current_trait_names,
          trail
        ) do
-    intersection = SeedFactory.ListUtils.intersection(current_trait_names, subsequent_traits)
+    intersection =
+      Enum.filter(current_trait_names, &(SeedFactory.Trait.name(&1) in subsequent_traits))
 
     if Enum.any?(intersection) do
       trail_analysis =

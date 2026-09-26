@@ -239,6 +239,9 @@ defmodule SeedFactory do
   @type context :: map()
   @type entity_name :: atom()
   @type rebinding_rule :: {entity_name(), rebind_as :: atom()}
+  @type trait_name :: atom()
+  @type trait_request ::
+          trait_name() | {trait_name(), value :: term()} | {:as, rebind_as :: atom()}
 
   @doc """
   Puts metadata about `schema` to `context`, so `context` becomes usable by other functions from this module.
@@ -305,6 +308,9 @@ defmodule SeedFactory do
       # specify traits
       %{user: _} = produce(context, user: [:active, :admin])
 
+      # pass a value to a trait declared with args_pattern: %{age: _}
+      %{user: _} = produce(context, user: [:active, age: 18])
+
       # apply traits incrementally — first create a pending admin, then activate
       %{user: _} = context |> produce(user: [:pending, :admin]) |> produce(user: [:active])
 
@@ -358,12 +364,13 @@ defmodule SeedFactory do
           | [
               entity_name()
               | rebinding_rule()
-              | {entity_name(), [trait_name :: atom() | {:as, rebind_as :: atom()}]}
+              | {entity_name(), [trait_request()]}
             ]
         ) :: context()
   def produce(context, entities_and_rebinding)
       when is_map_key(context, :__seed_factory_meta__) and is_list(entities_and_rebinding) do
-    {entities_with_trait_names, rebinding} = split_entities_and_rebinding(entities_and_rebinding)
+    {entities_with_trait_names, rebinding} =
+      split_entities_and_rebinding(context, entities_and_rebinding)
 
     Context.track_execution(
       context,
@@ -416,12 +423,13 @@ defmodule SeedFactory do
           | [
               entity_name()
               | rebinding_rule()
-              | {entity_name(), [trait_name :: atom() | {:as, rebind_as :: atom()}]}
+              | {entity_name(), [trait_request()]}
             ]
         ) :: context()
   def pre_produce(context, entities_and_rebinding)
       when is_map_key(context, :__seed_factory_meta__) and is_list(entities_and_rebinding) do
-    {entities_with_trait_names, rebinding} = split_entities_and_rebinding(entities_and_rebinding)
+    {entities_with_trait_names, rebinding} =
+      split_entities_and_rebinding(context, entities_and_rebinding)
 
     Context.track_execution(
       context,
@@ -444,25 +452,63 @@ defmodule SeedFactory do
     pre_produce(context, [entity])
   end
 
-  defp split_entities_and_rebinding(entities_and_rebinding) do
-    Enum.map_reduce(entities_and_rebinding, [], fn
-      {entity_name, rebind_as} = rebinding_rule, acc when is_atom(rebind_as) ->
-        {{entity_name, []}, [rebinding_rule | acc]}
+  defp split_entities_and_rebinding(context, entities_and_rebinding) do
+    {entities, rebinding} =
+      Enum.map_reduce(entities_and_rebinding, [], fn
+        {entity_name, nil}, acc ->
+          {{entity_name, []}, acc}
 
-      {entity_name, list}, acc when is_list(list) ->
-        {trait_names, opts} = Enum.split_while(list, &is_atom/1)
+        {entity_name, rebind_as} = rebinding_rule, acc when is_atom(rebind_as) ->
+          {{entity_name, []}, [rebinding_rule | acc]}
 
-        acc =
-          case opts[:as] do
-            nil -> acc
-            rebind_as -> [{entity_name, rebind_as} | acc]
-          end
+        {entity_name, list}, acc when is_list(list) ->
+          {opts, trait_names} = Enum.split_with(list, &match?({:as, _}, &1))
 
-        {{entity_name, trait_names}, acc}
+          acc =
+            Enum.reduce(opts, acc, fn
+              {:as, nil}, acc -> acc
+              {:as, rebind_as}, acc -> [{entity_name, rebind_as} | acc]
+            end)
 
-      entity_name, acc ->
-        {{entity_name, []}, acc}
-    end)
+          {{entity_name, trait_names}, acc}
+
+        entity_name, acc ->
+          {{entity_name, []}, acc}
+      end)
+
+    grouped = Enum.group_by(entities, &elem(&1, 0), &elem(&1, 1))
+
+    entities =
+      entities
+      |> Enum.uniq_by(&elem(&1, 0))
+      |> Enum.map(fn {entity_name, _} ->
+        trait_names = grouped |> Map.fetch!(entity_name) |> Enum.concat() |> Enum.uniq()
+
+        if trait_names == [] do
+          {entity_name, trait_names}
+        else
+          %{by_name: by_name} = Context.fetch_traits!(context, entity_name)
+
+          {entity_name,
+           SeedFactory.Trait.normalize_references!(by_name, trait_names, entity_name)}
+        end
+      end)
+
+    rebinding =
+      rebinding
+      |> Enum.reverse()
+      |> Enum.reduce(%{}, fn {entity, binding}, acc ->
+        Map.update(acc, entity, binding, fn
+          ^binding ->
+            binding
+
+          previous ->
+            raise ArgumentError,
+                  "conflicting bindings for entity #{inspect(entity)}: #{inspect(previous)} and #{inspect(binding)}"
+        end)
+      end)
+
+    {entities, Map.to_list(rebinding)}
   end
 
   @doc """

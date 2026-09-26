@@ -36,12 +36,14 @@ defmodule SeedFactory.Command do
 
     command = %{
       command
-      | required_entities: required_entities_from_params(params, %{}),
+      | required_entities: required_entities(params),
         params: params
     }
 
     {:ok, command}
   end
+
+  def required_entities(params), do: required_entities_from_params(params, %{})
 
   defp required_entities_from_params(params, acc) do
     Enum.reduce(params, acc, fn

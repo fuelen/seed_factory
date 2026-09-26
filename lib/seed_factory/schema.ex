@@ -37,10 +37,9 @@ defmodule SeedFactory.Schema do
     or a file.
   * `:entity` - refers to an entity within the context. If the entity is not in the context,
     SeedFactory will automatically execute a command that produces it.
-  * `:with_traits` - a list of trait names. Requires `:entity` option.
-    When the entity doesn't exist in the context, SeedFactory will produce it with the specified traits.
-    The plan guarantees the traits at the moment the command runs. When the entity is in the context
-    without them, the plan applies them when a declaration can still fire and refuses the command otherwise.
+  * `:with_traits` - a list of trait names or `{name, value}` pairs for parameterized traits. Requires `:entity` option.
+    SeedFactory creates the entity or applies the missing traits before the command runs.
+    If it cannot satisfy these requirements, the request fails before execution.
 
     > #### Note {: .info}
     > `:with_traits` is only used for automatic dependency resolution. If you explicitly pass
@@ -70,6 +69,7 @@ defmodule SeedFactory.Schema do
 
   The `resolve` macro defines the logic executed when the command is invoked.
   The resolver is a function that takes `args` and must return either:
+
   * `{:ok, map}` — where keys are atoms used by `:from` option in `produce` and `update` directives
   * `{:error, reason}` — aborts execution by raising `SeedFactory.ExecError`
 
@@ -216,12 +216,11 @@ defmodule SeedFactory.Schema do
   end
   ```
 
-  When you request an entity with a trait that can be set by multiple commands, SeedFactory picks
-  the first declared command by default. To force a specific path, request a trait that is unique
-  to that command:
+  When several commands can provide a trait, SeedFactory chooses one that fits
+  the plan. To require a specific path, request a trait unique to that command:
 
   ```elixir
-  # SeedFactory picks the first declared command by default
+  # Either path can provide :active
   produce(ctx, user: [:active])
 
   # Force the direct path by requesting :pending_skipped trait
@@ -242,20 +241,84 @@ defmodule SeedFactory.Schema do
 
   `:args_pattern` is a simpler alternative to the `:args_match` + `:generate_args` combination.
 
-  `:generate_args` runs once while the plan is built, before any command executes, and the
-  execution reuses the generated args. Keep it to producing values (random data, a counter):
-  no writes to a database or a file. The plan also calls `:args_match` on the args it has
-  fixed, to predict which declarations fire and refuse a plan that would lose a requested
-  trait before the first command after which the trait cannot come back. A function reading
-  the instance of an entity the plan itself produces is called only once every instance it
-  reads is final.
+  ### Parameterized traits
+
+  A parameterized trait accepts a value in `produce` or `with_traits`.
+  Put `_` in `:args_pattern` where the command should receive that value:
 
   ```elixir
-  # all three instructions below are equal
-  exec :create_user
-  exec :create_user, args_pattern: %{}
-  exec :create_user, generate_args: fn -> %{} end, args_match: fn _args -> true end
+  command :create_user do
+    param :age, value: 21
+
+    resolve(fn args -> MyApp.Users.create_user(args) end)
+
+    produce :user
+  end
+
+  trait :age, :user do
+    exec :create_user, args_pattern: %{age: _}
+  end
+
+  produce(ctx, user: [age: 18])
   ```
+
+  Here, `produce` passes `age: 18` to `:create_user`. After the command runs,
+  SeedFactory records `{:age, 18}` in the user's traits. A direct `exec/3` call
+  records the trait in the same way, using the value from the command arguments.
+
+  A dependency can require the same value through `with_traits`:
+
+  ```elixir
+  param :user, entity: :user, with_traits: [age: 18]
+  ```
+
+  Other fields in the pattern must match too. For example,
+  `%{age: _, role: :admin}` records the trait only when the command receives
+  `role: :admin`.
+
+  The rules:
+
+  * Each parameterized trait uses exactly one `_` placeholder as a map value,
+    for example `%{age: _}` or `%{settings: %{locale: _}}`.
+  * A parameterized trait requires one value, which can be any Elixir term.
+    Use separate traits for separate arguments.
+  * Values are compared with `===`, so `18` and `18.0` are different values.
+  * `from` can only name ordinary traits. A parameterized trait can use `from`
+    to replace an ordinary trait; its own previous value is replaced automatically.
+  * `:as` is reserved for rebinding and cannot name a parameterized trait.
+
+  #### Existing entities and value changes
+
+  Requesting a value already recorded in the entity's traits does not run
+  another command. To change the value, add an update command and another
+  declaration of the same trait to the schema above:
+
+  ```elixir
+  command :set_age do
+    param :user, entity: :user
+    param :age
+
+    resolve(fn args -> MyApp.Users.set_age(args.user, args.age) end)
+
+    update :user
+  end
+
+  trait :age, :user do
+    exec :set_age, args_pattern: %{age: _}
+  end
+
+  ctx = produce(ctx, user: [age: 18]) # runs :create_user
+  ctx = produce(ctx, user: [age: 18]) # runs nothing
+  ctx = produce(ctx, user: [age: 21]) # runs :set_age on the same user
+  ```
+
+  After the update, `{:age, 21}` replaces `{:age, 18}` in the user's traits.
+  Without an update command for the trait, requesting a different value fails
+  before execution.
+
+  ### Ordinary trait matching and argument generation
+
+  Use `args_pattern` when a trait requires fixed argument values:
 
   ```elixir
   trait :admin, :user do
@@ -265,8 +328,11 @@ defmodule SeedFactory.Schema do
   trait :normal, :user do
     exec :create_user, args_pattern: %{role: :normal}
   end
+  ```
 
-  # the same using the combination of `:args_match` and `:generate_args`
+  The equivalent declarations using functions are:
+
+  ```elixir
   trait :admin, :user do
     exec :create_user do
       generate_args(fn -> %{role: :admin} end)
@@ -282,10 +348,12 @@ defmodule SeedFactory.Schema do
   end
   ```
 
-  ```elixir
-  # an example which shows what is possible with `:args_match` + `:generate_args`
-  # but not with `:args_pattern`
+  Use `args_match` and `generate_args` when the condition cannot be expressed
+  with fixed values. `args_match` checks whether the arguments satisfy the trait;
+  `generate_args` supplies arguments that satisfy it when the trait is requested.
+  For example, an expiration check depends on today's date:
 
+  ```elixir
   trait :not_expired, :project do
     exec :publish_project do
       args_match(fn args -> Date.compare(Date.utc_today(), args.expiry_date) in [:lt, :eq] end)
@@ -308,6 +376,12 @@ defmodule SeedFactory.Schema do
     end
   end
   ```
+
+  `generate_args` runs once during planning, before any command executes.
+  The command then uses those generated arguments. Keep this function free of
+  database and file writes. SeedFactory also evaluates `args_match` during
+  planning when the required arguments are known; if it needs an entity that
+  has not been created yet, the check waits until that entity is available.
 
   ## Splitting large schemas with fragments
 
@@ -408,4 +482,14 @@ defmodule SeedFactory.Schema do
   ```
   """
   use Spark.Dsl, default_extensions: [extensions: SeedFactory.DSL], opts_to_document: []
+
+  defmacro __using__(opts) do
+    spark = super(opts)
+
+    quote do
+      unquote(spark)
+      import SeedFactory.DSL.Root.Trait, except: [trait: 2, trait: 3]
+      import SeedFactory.TraitDSL, only: [trait: 2, trait: 3]
+    end
+  end
 end

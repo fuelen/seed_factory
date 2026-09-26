@@ -55,6 +55,16 @@ defmodule SeedFactory.Requirements.TraitDelivery do
           removed_by: command,
           removed_when: :planned
 
+      {:certain, false, {:assigned, command, value}} ->
+        raise SeedFactory.MissingRequestedTraitError,
+          entity: entity,
+          binding: binding_name,
+          trait: trait,
+          required_by: consumer,
+          removed_by: command,
+          removed_when: :assigned,
+          assigned_value: value
+
       {:certain, false, nil} ->
         raise SeedFactory.MissingRequestedTraitError,
           entity: entity,
@@ -105,7 +115,8 @@ defmodule SeedFactory.Requirements.TraitDelivery do
   # What the step does to the trait: `:add` (a sure addition settles the step
   # whatever else on it is uncertain), `:remove` (a sure removal with no
   # possible re-add), `:reset` (a fresh instance without the trait), `:none`,
-  # or `:uncertain`.
+  # or `:uncertain`. A removal or reset carries `{:ok, value}` when the step
+  # assigns another value to the requested parameterized trait.
   defp step_effect(context, command, args, entity, trait, touched) do
     produces? = Enum.any?(command.producing_instructions, &(&1.entity == entity))
     updates? = Enum.any?(command.updating_instructions, &(&1.entity == entity))
@@ -114,39 +125,61 @@ defmodule SeedFactory.Requirements.TraitDelivery do
       known_args =
         Params.known_args(command.params, args, &fetch_entity(context, touched, &1), true)
 
-      statuses =
-        for declaration <- Context.possible_traits(context, entity, command.name),
-            declaration.name == trait or trait in List.wrap(declaration.from),
-            do: {declaration, Trait.firing(declaration, known_args)}
+      declarations = Context.possible_traits(context, entity, command.name)
+
+      effect =
+        Enum.reduce_while(declarations, :none, fn declaration, effect ->
+          concrete = Trait.for_reference(declaration, trait)
+
+          addition =
+            if concrete.name == trait do
+              Trait.firing(concrete, known_args)
+            else
+              :cannot
+            end
+
+          if addition == :sure do
+            {:halt, :add}
+          else
+            removal = Trait.removal_firing(declaration, trait, known_args, addition)
+
+            effect =
+              cond do
+                effect == :uncertain or addition == :maybe or removal == :maybe -> :uncertain
+                removal == :sure -> :remove
+                true -> effect
+              end
+
+            {:cont, effect}
+          end
+        end)
 
       cond do
-        added?(statuses, trait) -> :add
-        Enum.any?(statuses, &match?({_declaration, :maybe}, &1)) -> :uncertain
-        produces? -> :reset
-        removed?(statuses, trait) -> :remove
-        true -> :none
+        effect in [:add, :uncertain] ->
+          effect
+
+        produces? ->
+          {:reset, Enum.find_value(declarations, &Trait.assigned_value(&1, trait, known_args))}
+
+        effect == :remove ->
+          {:remove, Enum.find_value(declarations, &Trait.assigned_value(&1, trait, known_args))}
+
+        true ->
+          :none
       end
     else
       :none
     end
   end
 
-  defp added?(statuses, trait) do
-    Enum.any?(statuses, fn {declaration, status} ->
-      status == :sure and declaration.name == trait
-    end)
-  end
-
-  defp removed?(statuses, trait) do
-    Enum.any?(statuses, fn {declaration, status} ->
-      status == :sure and trait in List.wrap(declaration.from)
-    end)
-  end
-
   defp apply_effect(verdict, :none, _command_name), do: verdict
   defp apply_effect(_verdict, :add, _command_name), do: {true, nil}
-  defp apply_effect(_verdict, :reset, _command_name), do: {false, nil}
-  defp apply_effect(_verdict, :remove, command_name), do: {false, {:planned, command_name}}
+  defp apply_effect(_verdict, {:reset, nil}, _command_name), do: {false, nil}
+  defp apply_effect(_verdict, {:remove, nil}, command_name), do: {false, {:planned, command_name}}
+
+  defp apply_effect(_verdict, {_effect, {:ok, value}}, command_name) do
+    {false, {:assigned, command_name, value}}
+  end
 
   defp fetch_entity(context, touched, entity) do
     if MapSet.member?(touched, entity) or not Context.entity_exists?(context, entity) do

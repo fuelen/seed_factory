@@ -261,7 +261,10 @@ defmodule SeedFactory.Requirements.CandidateGraph do
 
   defp collect_traits(graph, entity, trait_names) do
     absent = absent_trait_names(graph.context, entity, trait_names)
-    Enum.reduce(absent, graph, &collect_trait(&2, entity, &1))
+    # Retain update alternatives for an existing value: another required
+    # command may overwrite it before the final read.
+    needed = Enum.uniq(absent ++ Enum.filter(trait_names, &is_tuple/1))
+    Enum.reduce(needed, graph, &collect_trait(&2, entity, &1))
   end
 
   defp collect_trait(graph, entity, trait_name) do
@@ -287,9 +290,8 @@ defmodule SeedFactory.Requirements.CandidateGraph do
     context = graph.context
     %{by_name: traits_by_name} = Context.fetch_traits!(context, entity)
 
-    # Requested trait names were validated by Restrictions.new and with_traits
-    # references are validated at compile time, so the name is always there.
-    traits = Map.fetch!(traits_by_name, trait_name)
+    # References have already been validated at the API or schema boundary.
+    traits = SeedFactory.Trait.fetch!(traits_by_name, trait_name)
 
     case trail_map(graph, entity) do
       {:error, exception} ->
@@ -345,6 +347,11 @@ defmodule SeedFactory.Requirements.CandidateGraph do
   # The trait may be declared on several commands and more than one of them may
   # sit in the trail, so a mismatch is reported only when no executed
   # declaration added the trait.
+  # All declarations agree on parameterization. A previous value does not
+  # consume the property: an update may still supply the requested value.
+  defp trail_status([%{exec_step: %{value_path: path}} | _], _trail_map)
+       when not is_nil(path), do: :continue
+
   defp trail_status(traits, trail_map) do
     executed =
       Enum.flat_map(traits, fn trait ->

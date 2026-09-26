@@ -84,7 +84,7 @@ defmodule SeedFactory.Test do
           | [
               SeedFactory.entity_name()
               | SeedFactory.rebinding_rule()
-              | {SeedFactory.entity_name(), [trait_name :: atom() | {:as, rebind_as :: atom()}]}
+              | {SeedFactory.entity_name(), [SeedFactory.trait_request()]}
             ]
         ) :: Macro.t()
   defmacro produce(data) do

@@ -204,14 +204,16 @@ defmodule SeedFactory.MissingRequestedTraitError do
     :trait,
     :required_by,
     :removed_by,
-    :removed_when
+    :removed_when,
+    :assigned_value
   ]
 
   # Raised by the prediction of the required traits' delivery, before the
   # first step after which the trait cannot come back. `required_by` is the
   # planned command whose parameter asks for the trait, nil for the request.
   # `removed_when` says whether the remover is a planned step or one this plan
-  # already ran while a later re-add was still uncertain.
+  # already ran while a later re-add was still uncertain, or `:assigned` when
+  # a planned step gives the parameterized trait `assigned_value` instead.
   def exception(opts) when is_list(opts) do
     entity = Keyword.fetch!(opts, :entity)
     binding = Keyword.fetch!(opts, :binding)
@@ -219,6 +221,7 @@ defmodule SeedFactory.MissingRequestedTraitError do
     required_by = Keyword.fetch!(opts, :required_by)
     removed_by = Keyword.fetch!(opts, :removed_by)
     removed_when = Keyword.fetch!(opts, :removed_when)
+    assigned_value = Keyword.get(opts, :assigned_value)
 
     binding_label = format_binding(entity, binding)
 
@@ -240,6 +243,9 @@ defmodule SeedFactory.MissingRequestedTraitError do
         {command, :planned} ->
           "command #{inspect(command)} removes it"
 
+        {command, :assigned} ->
+          "command #{inspect(command)} assigns #{inspect(assigned_value)} instead"
+
         {command, :executed} ->
           "command #{inspect(command)} removed it and no later planned command applies it"
       end
@@ -251,7 +257,8 @@ defmodule SeedFactory.MissingRequestedTraitError do
       trait: trait,
       required_by: required_by,
       removed_by: removed_by,
-      removed_when: removed_when
+      removed_when: removed_when,
+      assigned_value: assigned_value
     }
   end
 

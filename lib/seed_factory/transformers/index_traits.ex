@@ -30,10 +30,11 @@ defmodule SeedFactory.Transformers.IndexTraits do
       |> Map.new(fn {entity, traits} ->
         ensure_known_entity(entity, hd(traits), dsl_state)
         ensure_unique_names(traits, entity)
+        ensure_consistent_parameters(traits, entity)
         ensure_traits_have_valid_commands(entity, traits, dsl_state)
         ensure_valid_from_references(entity, traits, trait_name_to_entity)
         ensure_no_circular_dependencies(entity, traits)
-        traits = populate_to_field(traits)
+        traits = traits |> populate_to_field() |> populate_value_params(dsl_state)
 
         {entity,
          %{
@@ -45,6 +46,35 @@ defmodule SeedFactory.Transformers.IndexTraits do
     {:ok, dsl_state |> Transformer.persist(:traits, traits)}
   end
 
+  # The nested params of a container the placeholder sits on decide which
+  # values a declaration can receive.
+  defp populate_value_params(traits, dsl_state) do
+    command_by_name = Transformer.get_persisted(dsl_state, :commands)
+
+    Enum.map(traits, fn
+      %{exec_step: %{value_path: nil}} = trait ->
+        trait
+
+      %{exec_step: step} = trait ->
+        params = Map.fetch!(command_by_name, step.command_name).params
+
+        case placeholder_param(params, step.value_path) do
+          %{type: :container, params: nested} ->
+            %{trait | exec_step: %{step | value_params: nested}}
+
+          _param ->
+            trait
+        end
+    end)
+  end
+
+  defp placeholder_param(params, [key | rest]) do
+    case {Map.get(params, key), rest} do
+      {%{type: :container, params: nested}, [_ | _]} -> placeholder_param(nested, rest)
+      {param, _rest} -> param
+    end
+  end
+
   defp populate_to_field(traits) do
     from_to_mapping =
       traits
@@ -54,6 +84,38 @@ defmodule SeedFactory.Transformers.IndexTraits do
     Enum.map(traits, fn trait ->
       to = from_to_mapping[trait.name] || []
       %{trait | to: to}
+    end)
+  end
+
+  defp ensure_consistent_parameters(traits, entity) do
+    Enum.each(Enum.group_by(traits, & &1.name), fn {name, declarations} ->
+      if name == :as and Enum.any?(declarations, &SeedFactory.Trait.parameterized?/1) do
+        raise Spark.Error.DslError,
+          path: [:root, :trait, name, entity],
+          message: ":as is reserved for entity rebinding and cannot name a parameterized trait",
+          location: Spark.Dsl.Entity.anno(hd(declarations))
+      end
+
+      if declarations |> Enum.map(&SeedFactory.Trait.parameterized?/1) |> Enum.uniq() |> length() >
+           1 do
+        raise Spark.Error.DslError,
+          path: [:root, :trait, name, entity],
+          message: "all declarations of a trait must agree on whether it requires a value",
+          location: Spark.Dsl.Entity.anno(hd(declarations))
+      end
+    end)
+
+    parameterized =
+      traits |> Enum.filter(&SeedFactory.Trait.parameterized?/1) |> Enum.map(& &1.name)
+
+    Enum.each(traits, fn trait ->
+      if Enum.any?(List.wrap(trait.from), &(&1 in parameterized)) do
+        raise Spark.Error.DslError,
+          path: [:root, :trait, trait.name, entity],
+          message:
+            "parameterized traits cannot be used in from; assigning a new value replaces the previous value automatically",
+          location: Spark.Dsl.Entity.anno(trait)
+      end
     end)
   end
 
