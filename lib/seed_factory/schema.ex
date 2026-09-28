@@ -160,9 +160,11 @@ defmodule SeedFactory.Schema do
 
   ### Options
 
-  * `:from` - an atom or a list of atoms specifying which traits are replaced by this one.
-  When a list is given, any of the listed traits will be replaced. This is useful for status transitions.
-  A trait that only adds a property, without leaving the previous state, is declared without `from`.
+  * `:from` - the trait or list of traits this transition replaces.
+  To plan a transition, SeedFactory requires at least one source trait to be present when its command runs.
+  For example, `from :pending` requires `:pending`; `from [:pending, :active]` allows either.
+  Applying the new trait removes all listed source traits that are present.
+  Omit `from` to add a trait without replacing another.
 
   ```elixir
   trait :pending, :user do

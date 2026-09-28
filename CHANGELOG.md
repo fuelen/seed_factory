@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Bug fixes
+
+- Fix planned `from` transitions using a source trait that an earlier command
+  had already removed.
+- Fix transitions incorrectly rejected when their source trait was added by
+  a later invocation of the same command.
+
 ## v0.10.0 (2026-09-27)
 
 ### Features

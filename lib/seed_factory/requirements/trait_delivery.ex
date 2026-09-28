@@ -17,16 +17,55 @@ defmodule SeedFactory.Requirements.TraitDelivery do
   # settled trait stays settled, as the remaining steps are deterministic. A
   # certain loss raises before the first step after which the trait cannot
   # come back.
+  # `{:any, entity, trait_names, consumer}` requires at least one source of
+  # a transition, rather than every trait in the list.
   def check!(context, steps, required) do
-    for {entity, trait_names, consumer} <- required,
-        preceding = steps_before(steps, consumer),
-        open =
-          Enum.filter(
-            trait_names,
-            &(check_trait!(context, preceding, entity, &1, consumer) == :uncertain)
-          ),
-        open != [],
-        do: {entity, open, consumer}
+    Enum.flat_map(required, fn
+      {:any, entity, trait_names, consumer} = requirement ->
+        preceding = steps_before(steps, consumer)
+
+        case check_any!(context, preceding, entity, trait_names, consumer) do
+          :certain -> []
+          :uncertain -> [requirement]
+        end
+
+      {entity, trait_names, consumer} ->
+        preceding = steps_before(steps, consumer)
+
+        case Enum.filter(
+               trait_names,
+               &(check_trait!(context, preceding, entity, &1, consumer) == :uncertain)
+             ) do
+          [] -> []
+          open -> [{entity, open, consumer}]
+        end
+    end)
+  end
+
+  defp check_any!(context, steps, entity, traits, consumer) do
+    binding = Context.binding_name(context, entity)
+    current = Context.current_trait_names(context, binding)
+
+    result =
+      Enum.reduce_while(traits, :missing, fn trait, status ->
+        case predict(context, steps, entity, trait, trait in current) do
+          {:certain, true, _} -> {:halt, :certain}
+          :uncertain -> {:cont, :uncertain}
+          {:certain, false, _} -> {:cont, status}
+        end
+      end)
+
+    if result == :missing do
+      raise SeedFactory.MissingRequestedTraitError,
+        entity: entity,
+        binding: binding,
+        trait: traits,
+        required_by: consumer,
+        removed_by: nil,
+        removed_when: :planned
+    end
+
+    result
   end
 
   defp steps_before(steps, nil), do: steps

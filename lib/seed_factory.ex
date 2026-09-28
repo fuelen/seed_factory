@@ -28,10 +28,9 @@ defmodule SeedFactory do
   The `:entity` option also supports `:with_traits` to require that the entity has specific traits before it can be used as a dependency.
 
   **Traits** are labels assigned to entities when specific commands with specific arguments are executed.
-  They describe how an entity was created or what state it is in. `from` marks a transition: an `:active` trait
-  declared `from :pending` replaces `:pending`, so the entity goes through the `:pending` state and leaves it.
-  A trait that only adds a property is declared without `from`. Traits can also be tied to specific argument
-  values using `args_pattern`.
+  They describe how an entity was created or what state it is in. Use `from` for state transitions:
+  an `:active` trait declared with `from :pending` replaces `:pending`. Omit `from` to add a trait without
+  replacing another. Traits can also be tied to specific argument values using `args_pattern`.
 
   ## Schema example
 

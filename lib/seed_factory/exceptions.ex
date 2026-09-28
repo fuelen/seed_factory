@@ -230,6 +230,10 @@ defmodule SeedFactory.MissingRequestedTraitError do
         nil ->
           "requested trait #{inspect(trait)} would be missing on #{binding_label} after the plan"
 
+        command when is_list(trait) ->
+          "none of the source traits #{inspect(trait)} required by #{inspect(command)} " <>
+            "would be present on #{binding_label} when it runs"
+
         command ->
           "trait #{inspect(trait)} required by #{inspect(command)} would be missing on " <>
             "#{binding_label} when it runs"
@@ -237,6 +241,9 @@ defmodule SeedFactory.MissingRequestedTraitError do
 
     cause =
       case {removed_by, removed_when} do
+        {nil, _} when is_list(trait) ->
+          "no planned command preserves or applies any of them"
+
         {nil, _} ->
           "no planned command applies it"
 

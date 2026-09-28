@@ -65,20 +65,18 @@ defmodule SeedFactory.Requirements.Solver do
   # it never carries an edge and never reaches an error message.
   @context_instance :__context_instance__
 
-  # Every build returns the plan and the top-level request it serves, as
-  # `{entity, trait_names}` pairs, so the execution can check the delivery.
   def build_graph(context, entities_with_trait_names) do
     request = canonical(entities_with_trait_names)
     restrictions = Restrictions.new(context, request)
     candidate_graph = CandidateGraph.new(context, restrictions, request)
-    {solve_and_materialize(candidate_graph, :produce), requested(candidate_graph)}
+    solve_and_materialize!(candidate_graph, :produce)
   end
 
   def build_graph_for_pre_produce(context, entities_with_trait_names) do
     request = canonical(entities_with_trait_names)
     restrictions = Restrictions.new(context, request)
     candidate_graph = CandidateGraph.new(context, restrictions, request)
-    {solve_and_materialize(candidate_graph, :pre_produce), requested(candidate_graph)}
+    solve_and_materialize!(candidate_graph, :pre_produce)
   end
 
   # A request is a set. The search reads it in one order, the entities and
@@ -96,26 +94,30 @@ defmodule SeedFactory.Requirements.Solver do
     candidate_graph =
       CandidateGraph.new(context, restrictions, [{:command, command, initial_input}])
 
-    {solve_and_materialize(candidate_graph, :produce), requested(candidate_graph)}
+    solve_and_materialize!(candidate_graph, :produce)
   end
 
   defp requested(candidate_graph) do
     Enum.map(candidate_graph.request, &{&1.entity, &1.trait_names})
   end
 
-  defp solve_and_materialize(candidate_graph, mode) do
-    case solve(initial_state(candidate_graph, mode, true)) do
-      {:ok, solution} ->
-        to_command_graph(solution)
+  defp solve_and_materialize!(candidate_graph, mode) do
+    solution =
+      case solve(initial_state(candidate_graph, mode, true)) do
+        {:ok, solution} ->
+          solution
 
-      {:fail, strict_failure} ->
-        # A solution found by the relaxed pass carries the cycle the strict
-        # pass refused, so the topological sort reports it downstream.
-        case solve(initial_state(candidate_graph, mode, false)) do
-          {:ok, solution} -> to_command_graph(solution)
-          {:fail, _relaxed_failure} -> raise strict_failure.exception
-        end
-    end
+        {:fail, strict_failure} ->
+          # A solution found by the relaxed pass carries the cycle the strict
+          # pass refused, so the topological sort reports it downstream.
+          case solve(initial_state(candidate_graph, mode, false)) do
+            {:ok, solution} -> solution
+            {:fail, _relaxed_failure} -> raise strict_failure.exception
+          end
+      end
+
+    {to_command_graph(solution), requested(candidate_graph),
+     source_reads(solution, :alternatives)}
   end
 
   defp initial_state(candidate_graph, mode, strict_cycles?) do
@@ -131,6 +133,8 @@ defmodule SeedFactory.Requirements.Solver do
       requires: %{},
       producers: %{},
       trait_execs: %{},
+      trait_decls: %{},
+      source_choices: %{},
       extra_edges: [],
       uncertain_shelters: MapSet.new(),
       stack: [],
@@ -310,10 +314,15 @@ defmodule SeedFactory.Requirements.Solver do
   end
 
   defp viable_options(state, {:any, entity, options, demander}) do
-    usable =
-      Enum.filter(options, fn name ->
-        Map.fetch!(state.candidate_graph.traits, {entity, name}).status in [:continue, :satisfied]
-      end)
+    statuses =
+      Map.new(options, &{&1, Map.fetch!(state.candidate_graph.traits, {entity, &1}).status})
+
+    {carried, rest} =
+      options
+      |> Enum.filter(&(statuses[&1] in [:continue, :satisfied]))
+      |> Enum.split_with(&(statuses[&1] == :satisfied))
+
+    usable = carried ++ rest
 
     case usable do
       [] ->
@@ -327,11 +336,17 @@ defmodule SeedFactory.Requirements.Solver do
     end
   end
 
-  # A missing trail invalidates every trait node of the entity at once, so a
-  # dead option here can only be a trail mismatch.
+  # A missing trail invalidates the transition's own trait node before its
+  # sources are demanded, so a dead option is a trail mismatch or a consumed
+  # trait.
   defp dead_any_option_failure(state, entity, name, demander) do
-    {:mismatch, executed} = Map.fetch!(state.candidate_graph.traits, {entity, name}).status
-    trait_failure(entity, name, demander, {:trait_mismatch, executed, demander})
+    case Map.fetch!(state.candidate_graph.traits, {entity, name}).status do
+      {:mismatch, executed} ->
+        trait_failure(entity, name, demander, {:trait_mismatch, executed, demander})
+
+      {:error, exception} ->
+        %{kind: :other, exception: exception}
+    end
   end
 
   # Related entities come from the same command whenever possible: among
@@ -830,12 +845,15 @@ defmodule SeedFactory.Requirements.Solver do
 
         state
         |> Map.update!(:trait_execs, &Map.put(&1, {entity, name}, decl.command))
+        |> Map.update!(:trait_decls, &Map.put(&1, {entity, name}, decl))
         |> lose_other_declarations(entity, name, decl)
         |> add_edge(demander, decl.command, [decl.trait])
         |> push_prerequisite(entity, decl)
 
-      {{:any, entity, _options, demander}, {:opt, name}} ->
-        push_demands(state, [{:trait, entity, name, demander}])
+      {{:any, entity, options, demander}, {:opt, name}} ->
+        state
+        |> Map.update!(:source_choices, &Map.put(&1, {entity, options, demander}, name))
+        |> push_demands([{:trait, entity, name, demander}])
     end
   end
 
@@ -1096,7 +1114,32 @@ defmodule SeedFactory.Requirements.Solver do
           name <- param.trait_names,
           do: {param.entity, name, cmd}
 
-    request ++ consumed
+    request ++ consumed ++ source_reads(state)
+  end
+
+  # Search orders commands around one source; prediction keeps all alternatives
+  # because generated args may remove that source while another survives.
+  defp source_reads(state, mode \\ :selected) do
+    for {{entity, _name}, decl} <- Enum.sort(state.trait_decls),
+        not MapSet.member?(state.phantoms, decl.command),
+        source <- source_names(state, entity, decl, mode),
+        do: {entity, source, decl.command}
+  end
+
+  defp source_names(state, entity, decl, mode) do
+    case {decl.prerequisite, mode} do
+      {nil, _} ->
+        []
+
+      {{:one, name}, _} ->
+        [name]
+
+      {{:any, options}, :alternatives} ->
+        [options]
+
+      {{:any, options}, :selected} ->
+        [Map.fetch!(state.source_choices, {entity, options, decl.command})]
+    end
   end
 
   defp entity_requirements(state) do

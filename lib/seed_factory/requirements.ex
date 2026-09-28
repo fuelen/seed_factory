@@ -19,26 +19,35 @@ defmodule SeedFactory.Requirements do
   alias SeedFactory.Requirements.Solver
   alias SeedFactory.Requirements.TraitDelivery
 
-  # `requested` lists the `{entity, trait_names}` pairs the execution must
-  # deliver at the end of the plan; the parameters of the steps add what they
-  # need when they run. pre_produce knowingly withholds the requested
-  # entities, so it requests nothing here.
-  @enforce_keys [:context, :graph, :requested]
-  defstruct [:context, :graph, :requested]
+  @enforce_keys [:context, :graph, :requested, :source_reads]
+  defstruct [:context, :graph, :requested, :source_reads]
 
   def build(context, entities_with_trait_names) do
-    {graph, requested} = Solver.build_graph(context, entities_with_trait_names)
-    %__MODULE__{context: context, graph: graph, requested: requested}
+    {graph, requested, source_reads} = Solver.build_graph(context, entities_with_trait_names)
+    new(context, graph, requested, source_reads)
   end
 
   def build_for_pre_produce(context, entities_with_trait_names) do
-    {graph, _requested} = Solver.build_graph_for_pre_produce(context, entities_with_trait_names)
-    %__MODULE__{context: context, graph: graph, requested: []}
+    {graph, _requested, source_reads} =
+      Solver.build_graph_for_pre_produce(context, entities_with_trait_names)
+
+    new(context, graph, [], source_reads)
   end
 
   def build_for_command(context, command, initial_input) do
-    {graph, requested} = Solver.build_graph_for_command(context, command, initial_input)
-    %__MODULE__{context: context, graph: graph, requested: requested}
+    {graph, requested, source_reads} =
+      Solver.build_graph_for_command(context, command, initial_input)
+
+    new(context, graph, requested, source_reads)
+  end
+
+  defp new(context, graph, requested, source_reads) do
+    %__MODULE__{
+      context: context,
+      graph: graph,
+      requested: requested,
+      source_reads: source_reads
+    }
   end
 
   def apply_to_context(requirements, _exec_fn) when map_size(requirements.graph.nodes) == 0 do
@@ -59,7 +68,7 @@ defmodule SeedFactory.Requirements do
       |> CommandGraph.topologically_sorted_nodes()
 
     steps = Enum.map(sorted_nodes, fn node -> {node.name, step_args(context, node)} end)
-    required = trait_requirements(requirements.requested, context, steps)
+    required = trait_checks(requirements, context, steps)
 
     {context, _open} =
       steps
@@ -82,10 +91,9 @@ defmodule SeedFactory.Requirements do
   defp predict_open([], _context, _steps), do: []
   defp predict_open(open, context, steps), do: TraitDelivery.check!(context, steps, open)
 
-  # The traits of the request, read at the end of the plan, and the traits the
-  # parameters of every step ask for, read when the step runs.
-  defp trait_requirements(requested, context, steps) do
-    request = Enum.map(requested, fn {entity, trait_names} -> {entity, trait_names, nil} end)
+  defp trait_checks(requirements, context, steps) do
+    request =
+      Enum.map(requirements.requested, fn {entity, trait_names} -> {entity, trait_names, nil} end)
 
     consumed =
       for {command_name, _args} <- steps,
@@ -93,7 +101,19 @@ defmodule SeedFactory.Requirements do
           MapSet.size(trait_names) > 0,
           do: {entity, MapSet.to_list(trait_names), command_name}
 
-    request ++ consumed
+    planned = MapSet.new(steps, fn {command_name, _args} -> command_name end)
+
+    sources =
+      for {entity, source, command_name} <- requirements.source_reads,
+          MapSet.member?(planned, command_name) do
+        if is_list(source) do
+          {:any, entity, source, command_name}
+        else
+          {entity, [source], command_name}
+        end
+      end
+
+    request ++ consumed ++ sources
   end
 
   defp step_args(context, node) do

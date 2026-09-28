@@ -58,14 +58,10 @@ defmodule SeedFactory.PartialResolutionTest do
     end
 
     trait :upgraded_b, :thing do
-      from :basic
+      from [:basic, :upgraded_a_alt]
       exec :upgrade_via_path_b
     end
 
-    # :final conflict group: two entries with different from prerequisites.
-    # When upgrade_via_path_a was executed with :upgraded_a_alt (mode: :alt),
-    # resolving the :upgraded_a prerequisite hits trait_mismatch,
-    # while :upgraded_b resolves normally → partial resolution in resolve_trait_dependencies.
     trait :final, :thing do
       from :upgraded_a
       exec :finalize_from_a
@@ -88,8 +84,8 @@ defmodule SeedFactory.PartialResolutionTest do
     # Step 2: request :final trait.
     # - from :upgraded_a → trait_mismatch (upgrade_via_path_a ran with :upgraded_a_alt, not :upgraded_a)
     # - from :upgraded_b → resolves normally
-    # This exercises the {:partial, ...} branch in resolve_trait_dependencies.
     context = produce(context, thing: [:final])
-    assert context.thing.stage in [:final_a, :final_b]
+    assert context.thing.stage == :final_b
+    assert context.__seed_factory_meta__.current_traits.thing == [:final]
   end
 end

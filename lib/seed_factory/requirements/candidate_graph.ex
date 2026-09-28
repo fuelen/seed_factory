@@ -18,6 +18,7 @@ defmodule SeedFactory.Requirements.CandidateGraph do
 
   alias SeedFactory.Context
   alias SeedFactory.Requirements.Restrictions
+  alias SeedFactory.Trait
 
   defmodule EntityNode do
     @moduledoc false
@@ -291,7 +292,7 @@ defmodule SeedFactory.Requirements.CandidateGraph do
     %{by_name: traits_by_name} = Context.fetch_traits!(context, entity)
 
     # References have already been validated at the API or schema boundary.
-    traits = SeedFactory.Trait.fetch!(traits_by_name, trait_name)
+    traits = Trait.fetch!(traits_by_name, trait_name)
 
     case trail_map(graph, entity) do
       {:error, exception} ->
@@ -303,18 +304,36 @@ defmodule SeedFactory.Requirements.CandidateGraph do
         }
 
       {:ok, trail_map} ->
-        status = trail_status(traits, trail_map)
+        binding_name = Context.binding_name(context, entity)
+        current = Context.current_trait_names(context, binding_name)
+
+        status =
+          with :continue <- current_trait_status(trait_name, current),
+               :satisfied <- trail_status(traits, trail_map) do
+            # The trail remembers an addition, but the current instance
+            # no longer carries the trait. Keep the consumption error on
+            # this candidate so the search can still try another route.
+            Restrictions.check_traits_not_consumed(context, entity, [trait_name], traits_by_name)
+          end
 
         declarations =
           Enum.map(traits, fn trait ->
             %Declaration{
               trait: trait,
               command: trait.exec_step.command_name,
-              prerequisite: prerequisite(trait, traits_by_name, trail_map)
+              prerequisite: prerequisite(trait, current)
             }
           end)
 
         %TraitNode{entity: entity, name: trait_name, status: status, declarations: declarations}
+    end
+  end
+
+  defp current_trait_status(trait_name, current) do
+    if is_atom(trait_name) and trait_name in current do
+      :satisfied
+    else
+      :continue
     end
   end
 
@@ -373,27 +392,20 @@ defmodule SeedFactory.Requirements.CandidateGraph do
     end
   end
 
-  defp prerequisite(%{from: nil}, _traits_by_name, _trail_map), do: nil
+  # Assigning another value to a parameterized trait the entity carries
+  # updates it: the transition into the trait already happened.
+  defp prerequisite(%{from: nil}, _current), do: nil
 
-  defp prerequisite(%{from: from}, _traits_by_name, _trail_map) when is_atom(from) do
-    {:one, from}
-  end
+  defp prerequisite(trait, current) do
+    name = Trait.name(trait.name)
 
-  defp prerequisite(%{from: from_any_of}, traits_by_name, trail_map) when is_list(from_any_of) do
-    satisfied? =
-      Enum.any?(from_any_of, fn from ->
-        Enum.any?(traits_by_name[from], fn trait ->
-          case trail_map[trait.exec_step.command_name] do
-            nil -> false
-            %{added: added} -> trait.name in added
-          end
-        end)
-      end)
+    carried? =
+      Trait.parameterized?(trait) and Enum.any?(current, &match?({^name, _value}, &1))
 
-    if satisfied? do
-      nil
-    else
-      {:any, from_any_of}
+    cond do
+      carried? -> nil
+      is_atom(trait.from) -> {:one, trait.from}
+      true -> {:any, trait.from}
     end
   end
 end

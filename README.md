@@ -35,7 +35,7 @@ This section provides a brief overview of the API. For comprehensive explanation
 
 To use the library, define a schema with commands that describe the processes of your application. When a command is executed it modifies the context by producing/updating/deleting entities.
 
-Entities can have traits — labels that describe how an entity was created or what state it is in. `from` marks a transition: `:active` declared `from :pending` replaces `:pending`, so the entity goes through `:pending` and leaves it. A trait that only adds a property is declared without `from`. Traits can also be tied to specific argument values using `args_pattern`.
+Entities can have traits — labels that describe how an entity was created or what state it is in. Use `from` for state transitions: an `:active` trait declared with `from :pending` replaces `:pending`. Omit `from` to add a trait without replacing another. Traits can also be tied to specific argument values using `args_pattern`.
 
 ### Schema example
 
