@@ -719,6 +719,7 @@ defmodule SeedFactory.Requirements.Solver do
   defp prerequisite_demands(entity, decl) do
     case decl.prerequisite do
       nil -> []
+      :carried -> []
       {:one, name} -> [{:trait, entity, name, decl.command}]
       {:any, options} -> [{:any, entity, options, decl.command}]
     end
@@ -1040,13 +1041,20 @@ defmodule SeedFactory.Requirements.Solver do
 
   defp aggregate_failures(_state, _demand, [{_option, first} | _rest]), do: first
 
-  defp prerequisite_failure?(decl, %{kind: :trait, demander: demander, name: name}) do
-    demander == decl.command and
-      case decl.prerequisite do
-        {:one, prerequisite} -> name == prerequisite
-        {:any, options} -> name in options
-        nil -> false
-      end
+  defp prerequisite_failure?(
+         %{command: command, prerequisite: {:one, prerequisite}},
+         %{kind: :trait, demander: demander, name: name}
+       )
+       when demander == command do
+    name == prerequisite
+  end
+
+  defp prerequisite_failure?(
+         %{command: command, prerequisite: {:any, options}},
+         %{kind: :trait, demander: demander, name: name}
+       )
+       when demander == command do
+    name in options
   end
 
   defp prerequisite_failure?(_decl, _failure), do: false
@@ -1130,6 +1138,12 @@ defmodule SeedFactory.Requirements.Solver do
     case {decl.prerequisite, mode} do
       {nil, _} ->
         []
+
+      {:carried, :selected} ->
+        [Trait.name(decl.trait.name)]
+
+      {:carried, :alternatives} ->
+        [[Trait.name(decl.trait.name) | List.wrap(decl.trait.from)]]
 
       {{:one, name}, _} ->
         [name]

@@ -46,7 +46,11 @@ defmodule SeedFactory.Requirements.TraitDelivery do
     binding = Context.binding_name(context, entity)
     current = Context.current_trait_names(context, binding)
 
-    verdicts = Enum.map(traits, &predict(context, steps, entity, &1, &1 in current))
+    verdicts =
+      Enum.map(traits, fn name ->
+        present? = Enum.any?(current, &(Trait.name(&1) == name))
+        predict(context, steps, entity, name, present?)
+      end)
 
     cond do
       Enum.any?(verdicts, &match?({:certain, true, _}, &1)) ->
@@ -69,7 +73,6 @@ defmodule SeedFactory.Requirements.TraitDelivery do
     end
   end
 
-  # A source is never parameterized, so a step can only remove it outright.
   defp remover(context, binding, traits, verdicts) do
     planned =
       Enum.find_value(Enum.zip(traits, verdicts), fn

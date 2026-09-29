@@ -38,7 +38,7 @@ defmodule SeedFactory.Requirements.CandidateGraph do
 
   defmodule Declaration do
     @moduledoc false
-    # prerequisite: nil | {:one, trait_name} | {:any, [trait_name]}
+    # prerequisite: nil | :carried | {:one, trait_name} | {:any, [trait_name]}
     defstruct [:trait, :command, :prerequisite]
   end
 
@@ -280,6 +280,7 @@ defmodule SeedFactory.Requirements.CandidateGraph do
 
         case declaration.prerequisite do
           nil -> graph
+          :carried -> graph
           {:one, name} -> collect_trait(graph, entity, name)
           {:any, names} -> Enum.reduce(names, graph, &collect_trait(&2, entity, &1))
         end
@@ -317,12 +318,14 @@ defmodule SeedFactory.Requirements.CandidateGraph do
           end
 
         declarations =
-          Enum.map(traits, fn trait ->
-            %Declaration{
-              trait: trait,
-              command: trait.exec_step.command_name,
-              prerequisite: prerequisite(trait, current)
-            }
+          Enum.flat_map(traits, fn trait ->
+            for prerequisite <- prerequisites(trait, current) do
+              %Declaration{
+                trait: trait,
+                command: trait.exec_step.command_name,
+                prerequisite: prerequisite
+              }
+            end
           end)
 
         %TraitNode{entity: entity, name: trait_name, status: status, declarations: declarations}
@@ -392,20 +395,15 @@ defmodule SeedFactory.Requirements.CandidateGraph do
     end
   end
 
-  # Assigning another value to a parameterized trait the entity carries
-  # updates it: the transition into the trait already happened.
-  defp prerequisite(%{from: nil}, _current), do: nil
+  defp prerequisites(%{from: nil}, _current), do: [nil]
 
-  defp prerequisite(trait, current) do
+  defp prerequisites(trait, current) do
     name = Trait.name(trait.name)
 
     carried? =
       Trait.parameterized?(trait) and Enum.any?(current, &match?({^name, _value}, &1))
 
-    cond do
-      carried? -> nil
-      is_atom(trait.from) -> {:one, trait.from}
-      true -> {:any, trait.from}
-    end
+    source = if is_atom(trait.from), do: {:one, trait.from}, else: {:any, trait.from}
+    if carried?, do: [:carried, source], else: [source]
   end
 end
