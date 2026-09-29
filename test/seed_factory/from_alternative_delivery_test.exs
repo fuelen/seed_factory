@@ -88,8 +88,15 @@ defmodule SeedFactory.FromAlternativeDeliveryTest do
   import SeedFactory
   alias __MODULE__.{Forward, Reverse, EntityForward, EntityReverse}
 
-  for schema <- [Forward, Reverse, EntityForward, EntityReverse], existing? <- [false, true] do
+  for {schema, first_source} <- [
+        {Forward, :pending},
+        {Reverse, :ready},
+        {EntityForward, :pending},
+        {EntityReverse, :ready}
+      ],
+      existing? <- [false, true] do
     @schema schema
+    @first_source first_source
     @existing existing?
     @deferred not existing? and schema in [EntityForward, EntityReverse]
 
@@ -120,7 +127,11 @@ defmodule SeedFactory.FromAlternativeDeliveryTest do
 
       assert Enum.sort(error.trait) == [:pending, :ready]
       assert error.required_by == :close
+      assert error.removed_by == :audit
+      assert error.removed_when == :planned
+      assert error.removed_trait == @first_source
       assert error.message =~ "none of the source traits"
+      assert error.message =~ "command :audit removes #{inspect(@first_source)}"
 
       if @deferred do
         assert_receive :created

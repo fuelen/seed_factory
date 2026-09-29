@@ -205,7 +205,8 @@ defmodule SeedFactory.MissingRequestedTraitError do
     :required_by,
     :removed_by,
     :removed_when,
-    :assigned_value
+    :assigned_value,
+    :removed_trait
   ]
 
   # Raised by the prediction of the required traits' delivery, before the
@@ -214,6 +215,8 @@ defmodule SeedFactory.MissingRequestedTraitError do
   # `removed_when` says whether the remover is a planned step or one this plan
   # already ran while a later re-add was still uncertain, or `:assigned` when
   # a planned step gives the parameterized trait `assigned_value` instead.
+  # When `trait` lists the sources of a transition, `removed_trait` is the
+  # source the remover took.
   def exception(opts) when is_list(opts) do
     entity = Keyword.fetch!(opts, :entity)
     binding = Keyword.fetch!(opts, :binding)
@@ -222,6 +225,7 @@ defmodule SeedFactory.MissingRequestedTraitError do
     removed_by = Keyword.fetch!(opts, :removed_by)
     removed_when = Keyword.fetch!(opts, :removed_when)
     assigned_value = Keyword.get(opts, :assigned_value)
+    removed_trait = Keyword.get(opts, :removed_trait)
 
     binding_label = format_binding(entity, binding)
 
@@ -247,6 +251,13 @@ defmodule SeedFactory.MissingRequestedTraitError do
         {nil, _} ->
           "no planned command applies it"
 
+        {command, :planned} when is_list(trait) ->
+          "command #{inspect(command)} removes #{inspect(removed_trait)}"
+
+        {command, :executed} when is_list(trait) ->
+          "command #{inspect(command)} removed #{inspect(removed_trait)} and no later " <>
+            "planned command applies any of them"
+
         {command, :planned} ->
           "command #{inspect(command)} removes it"
 
@@ -265,7 +276,8 @@ defmodule SeedFactory.MissingRequestedTraitError do
       required_by: required_by,
       removed_by: removed_by,
       removed_when: removed_when,
-      assigned_value: assigned_value
+      assigned_value: assigned_value,
+      removed_trait: removed_trait
     }
   end
 

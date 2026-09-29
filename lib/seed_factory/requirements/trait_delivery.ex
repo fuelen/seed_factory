@@ -46,26 +46,44 @@ defmodule SeedFactory.Requirements.TraitDelivery do
     binding = Context.binding_name(context, entity)
     current = Context.current_trait_names(context, binding)
 
-    result =
-      Enum.reduce_while(traits, :missing, fn trait, status ->
-        case predict(context, steps, entity, trait, trait in current) do
-          {:certain, true, _} -> {:halt, :certain}
-          :uncertain -> {:cont, :uncertain}
-          {:certain, false, _} -> {:cont, status}
-        end
+    verdicts = Enum.map(traits, &predict(context, steps, entity, &1, &1 in current))
+
+    cond do
+      Enum.any?(verdicts, &match?({:certain, true, _}, &1)) ->
+        :certain
+
+      :uncertain in verdicts ->
+        :uncertain
+
+      true ->
+        {removed_by, removed_when, removed_trait} = remover(context, binding, traits, verdicts)
+
+        raise SeedFactory.MissingRequestedTraitError,
+          entity: entity,
+          binding: binding,
+          trait: traits,
+          required_by: consumer,
+          removed_by: removed_by,
+          removed_when: removed_when,
+          removed_trait: removed_trait
+    end
+  end
+
+  # A source is never parameterized, so a step can only remove it outright.
+  defp remover(context, binding, traits, verdicts) do
+    planned =
+      Enum.find_value(Enum.zip(traits, verdicts), fn
+        {trait, {:certain, false, {:planned, command}}} -> {command, :planned, trait}
+        {_trait, {:certain, false, nil}} -> nil
       end)
 
-    if result == :missing do
-      raise SeedFactory.MissingRequestedTraitError,
-        entity: entity,
-        binding: binding,
-        trait: traits,
-        required_by: consumer,
-        removed_by: nil,
-        removed_when: :planned
-    end
-
-    result
+    planned ||
+      Enum.find_value(traits, {nil, :planned, nil}, fn trait ->
+        case executed_remover(context, binding, trait) do
+          nil -> nil
+          command -> {command, :executed, trait}
+        end
+      end)
   end
 
   defp steps_before(steps, nil), do: steps
