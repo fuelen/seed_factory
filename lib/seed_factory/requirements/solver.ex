@@ -132,7 +132,6 @@ defmodule SeedFactory.Requirements.Solver do
       edges: [],
       requires: %{},
       producers: %{},
-      trait_execs: %{},
       trait_decls: %{},
       source_choices: %{},
       extra_edges: [],
@@ -314,15 +313,16 @@ defmodule SeedFactory.Requirements.Solver do
   end
 
   defp viable_options(state, {:any, entity, options, demander}) do
-    statuses =
-      Map.new(options, &{&1, Map.fetch!(state.candidate_graph.traits, {entity, &1}).status})
-
     {carried, rest} =
-      options
-      |> Enum.filter(&(statuses[&1] in [:continue, :satisfied]))
-      |> Enum.split_with(&(statuses[&1] == :satisfied))
+      Enum.reduce(options, {[], []}, fn name, {carried, rest} ->
+        case Map.fetch!(state.candidate_graph.traits, {entity, name}).status do
+          :satisfied -> {[name | carried], rest}
+          :continue -> {carried, [name | rest]}
+          _ -> {carried, rest}
+        end
+      end)
 
-    usable = carried ++ rest
+    usable = Enum.reverse(carried, Enum.reverse(rest))
 
     case usable do
       [] ->
@@ -844,7 +844,6 @@ defmodule SeedFactory.Requirements.Solver do
           end
 
         state
-        |> Map.update!(:trait_execs, &Map.put(&1, {entity, name}, decl.command))
         |> Map.update!(:trait_decls, &Map.put(&1, {entity, name}, decl))
         |> lose_other_declarations(entity, name, decl)
         |> add_edge(demander, decl.command, [decl.trait])
@@ -970,7 +969,8 @@ defmodule SeedFactory.Requirements.Solver do
           {cmd, :prerequisite_failed}
 
         lost?(state, decl) ->
-          {cmd, {:lost_to, node.name, Map.fetch!(state.trait_execs, {node.entity, node.name})}}
+          {cmd,
+           {:lost_to, node.name, Map.fetch!(state.trait_decls, {node.entity, node.name}).command}}
 
         conflict = pattern_conflict(state, decl) ->
           {cmd, conflict}
@@ -1228,7 +1228,8 @@ defmodule SeedFactory.Requirements.Solver do
 
   defp next_trait_read_decision(state, requires) do
     Enum.find_value(trait_requirements(state), :settled, fn {entity, name, consumer} ->
-      exec = state.trait_execs[{entity, name}]
+      decl = state.trait_decls[{entity, name}]
+      exec = if decl, do: decl.command
 
       if exec != nil and MapSet.member?(state.phantoms, exec) do
         nil
