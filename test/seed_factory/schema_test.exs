@@ -1473,6 +1473,108 @@ defmodule SeedFactory.SchemaTest do
       )
     end
 
+    test "args_pattern referencing an unknown param" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> admin -> user defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          unknown param :rol in `args_pattern` of the :create_user command, did you mean :role?
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_user do
+              param :role, value: :normal
+              resolve(fn _args -> {:ok, %{user: %{}}} end)
+              produce :user
+            end
+
+            trait :admin, :user do
+              exec :create_user, args_pattern: %{rol: :admin}
+            end
+          end
+        end
+      )
+    end
+
+    test "args_pattern referencing an unknown nested param of a container" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> paid -> user defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          unknown param [:finances, :plann] in `args_pattern` of the :create_user command, did you mean [:finances, :plan]?
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_user do
+              param :finances do
+                param :plan, value: :free
+              end
+
+              resolve(fn _args -> {:ok, %{user: %{}}} end)
+              produce :user
+            end
+
+            trait :paid, :user do
+              exec :create_user, args_pattern: %{finances: %{plann: :paid}}
+            end
+          end
+        end
+      )
+    end
+
+    test "args_pattern referencing a nested param of a container by a string key" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> paid -> user defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          unknown param [:finances, "plan"] in `args_pattern` of the :create_user command
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_user do
+              param :finances do
+                param :plan, value: :free
+              end
+
+              resolve(fn _args -> {:ok, %{user: %{}}} end)
+              produce :user
+            end
+
+            trait :paid, :user do
+              exec :create_user, args_pattern: %{finances: %{"plan" => :paid}}
+            end
+          end
+        end
+      )
+    end
+
+    test "args_pattern keys inside a map held by a value param are not checked" do
+      defmodule OpenMapPatternSchema do
+        use SeedFactory.Schema
+
+        command :create_client do
+          param :features, value: %{}
+          resolve(fn args -> {:ok, %{client: args.features}} end)
+          produce :client
+        end
+
+        trait :recording, :client do
+          exec :create_client, args_pattern: %{features: %{recording: true}}
+        end
+      end
+
+      %{}
+      |> SeedFactory.init(OpenMapPatternSchema)
+      |> SeedFactory.produce(client: [:recording])
+      |> TraitAssertions.assert_trait(:client, [:recording])
+    end
+
     test "defining trait for an unknown command" do
       assert_dsl_error(
         """

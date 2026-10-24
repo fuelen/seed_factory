@@ -247,6 +247,8 @@ defmodule SeedFactory.Schema do
 
   * `:args_pattern` - a map with args. If the command args match the pattern, the entity is marked with the trait.
   The pattern is also used to generate args when the entity is requested with this trait.
+  Its keys must be params of the command, nested params of a container included; keys inside a map
+  that a param holds as its value are not checked.
   * `:args_match` - a function that accepts command args and returns a boolean. Must be used with `:generate_args`.
   * `:generate_args` - a function that generates a map with args satisfying `:args_match`. Must be used with `:args_match`.
 

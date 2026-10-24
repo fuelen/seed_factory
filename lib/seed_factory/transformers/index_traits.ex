@@ -204,6 +204,54 @@ defmodule SeedFactory.Transformers.IndexTraits do
             "contains an exec step to the #{inspect(trait.exec_step.command_name)} command which neither produces nor updates the #{inspect(entity)} entity",
           location: Spark.Dsl.Entity.anno(trait)
       end
+
+      ensure_known_pattern_keys(trait, entity, command)
+    end)
+  end
+
+  # Keys of a map held by a value, generator or entity param are not declared
+  # anywhere, so only params and the nested params of containers are checked.
+  defp ensure_known_pattern_keys(trait, entity, command) do
+    case unknown_pattern_key(trait.exec_step.args_pattern || %{}, command.params, []) do
+      nil ->
+        :ok
+
+      {path, params} ->
+        suggestion =
+          case hd(path) do
+            key when is_atom(key) -> SeedFactory.DidYouMean.suggest(key, Map.keys(params))
+            _key -> nil
+          end
+
+        {key, suggestion} =
+          case {path, suggestion} do
+            {[key], suggestion} -> {key, suggestion}
+            {[_key | _containers], nil} -> {Enum.reverse(path), nil}
+            {[_key | containers], name} -> {Enum.reverse(path), Enum.reverse([name | containers])}
+          end
+
+        raise Spark.Error.DslError,
+          path: [:root, :trait, trait.name, entity],
+          message:
+            "unknown param #{inspect(key)} in `args_pattern` of the #{inspect(command.name)} command" <>
+              SeedFactory.DidYouMean.format_suggestion(suggestion),
+          location: Spark.Dsl.Entity.anno(trait)
+    end
+  end
+
+  defp unknown_pattern_key(pattern, params, path) do
+    Enum.find_value(pattern, fn {key, value} ->
+      case Map.fetch(params, key) do
+        :error ->
+          {[key | path], params}
+
+        {:ok, %{type: :container, params: nested_params}}
+        when is_map(value) and not is_struct(value) ->
+          unknown_pattern_key(value, nested_params, [key | path])
+
+        {:ok, _param} ->
+          nil
+      end
     end)
   end
 

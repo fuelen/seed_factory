@@ -7,6 +7,8 @@
 - A schema no longer compiles when one command has two transitions from the
   same traits that can apply together. Declare a trait that only adds a
   property without `from`.
+- A schema no longer compiles when an `args_pattern` key is not a param of the
+  command.
 
 ## v0.10.1 (2026-09-29)
 
