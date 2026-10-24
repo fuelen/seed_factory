@@ -32,8 +32,10 @@ defmodule SeedFactory.MixProject do
       description: "A toolkit for test data generation.",
       licenses: ["Apache-2.0"],
       links: %{
-        GitHub: @source_url,
-        Changelog: "https://hexdocs.pm/seed_factory/changelog.html"
+        "GitHub" => @source_url,
+        "Changelog" => "https://hexdocs.pm/seed_factory/changelog.html",
+        "Article: From database factories to business state" =>
+          "https://fuelen.github.io/posts/from-database-factories-like-exmachina-to-business-state/"
       }
     ]
   end

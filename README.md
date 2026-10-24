@@ -16,6 +16,7 @@ Dependent entities are resolved and created automatically, so you can focus on w
 The library is completely agnostic to the database toolkit.
 
 See docs for details <https://hexdocs.pm/seed_factory>.
+The reasoning behind this approach is described in the article [From database factories like ExMachina to business state](https://fuelen.github.io/posts/from-database-factories-like-exmachina-to-business-state/).
 
 ## Installation
 
