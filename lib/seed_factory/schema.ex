@@ -161,10 +161,16 @@ defmodule SeedFactory.Schema do
   ### Options
 
   * `:from` - the trait or list of traits this transition replaces.
-  To plan a transition, SeedFactory requires at least one source trait to be present when its command runs.
+  To plan a transition, SeedFactory requires at least one trait listed in `from` to be present when its command runs.
   For example, `from :pending` requires `:pending`; `from [:pending, :active]` allows either.
-  Applying the new trait removes all listed source traits that are present.
+  Applying the new trait removes all traits listed in `from` that are present.
   Omit `from` to add a trait without replacing another.
+
+  `from` is checked only when you ask for the trait. To make the command itself require `:pending`,
+  declare `with_traits: [:pending]` on its param. SeedFactory then checks it every time the command runs,
+  except for an entity you pass to `exec/3` explicitly. This works only for a single `from` trait:
+  `with_traits` requires all the listed traits.
+
   Two transitions of one command from the same traits would move the entity into two states at once,
   so the schema does not compile unless each of them declares an `args_match` or an `args_pattern`
   constraining more than the `_` of a parameterized trait.

@@ -130,7 +130,7 @@ defmodule SeedFactory.FromAlternativeDeliveryTest do
       assert error.removed_by == :audit
       assert error.removed_when == :planned
       assert error.removed_trait == @first_source
-      assert error.message =~ "none of the source traits"
+      assert error.message =~ "none of the traits"
       assert error.message =~ "command :audit removes #{inspect(@first_source)}"
 
       if @deferred do

@@ -74,7 +74,7 @@ defmodule SeedFactory.FromAlternativeExecutedRemoverTest do
 
     error =
       assert_raise SeedFactory.MissingRequestedTraitError,
-                   "none of the source traits [:t1, :t2] required by :close_e would be present " <>
+                   "none of the traits [:t1, :t2] required by :close_e would be present " <>
                      "on :e when it runs: command :wipe_e removed :t1 and no later planned " <>
                      "command applies any of them",
                    fn -> produce(context, e: [:closed]) end
@@ -89,7 +89,7 @@ defmodule SeedFactory.FromAlternativeExecutedRemoverTest do
 
     error =
       assert_raise SeedFactory.MissingRequestedTraitError,
-                   "none of the source traits [:t1, :t2] required by :close_e would be present " <>
+                   "none of the traits [:t1, :t2] required by :close_e would be present " <>
                      "on :e when it runs: no planned command preserves or applies any of them",
                    fn -> produce(context, e: [:closed]) end
 

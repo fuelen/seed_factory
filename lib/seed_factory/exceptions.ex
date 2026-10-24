@@ -235,7 +235,7 @@ defmodule SeedFactory.MissingRequestedTraitError do
           "requested trait #{inspect(trait)} would be missing on #{binding_label} after the plan"
 
         command when is_list(trait) ->
-          "none of the source traits #{inspect(trait)} required by #{inspect(command)} " <>
+          "none of the traits #{inspect(trait)} required by #{inspect(command)} " <>
             "would be present on #{binding_label} when it runs"
 
         command ->
