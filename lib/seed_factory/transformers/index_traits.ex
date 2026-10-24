@@ -33,6 +33,7 @@ defmodule SeedFactory.Transformers.IndexTraits do
         ensure_consistent_parameters(traits, entity)
         ensure_traits_have_valid_commands(entity, traits, dsl_state)
         ensure_valid_from_references(entity, traits, trait_name_to_entity)
+        ensure_distinct_transitions(traits, entity, dsl_state)
         ensure_no_circular_dependencies(entity, traits)
         traits = traits |> populate_to_field() |> populate_value_params(dsl_state)
 
@@ -218,6 +219,81 @@ defmodule SeedFactory.Transformers.IndexTraits do
           path: [:root, :trait, trait_name, entity],
           message: "duplicated trait",
           location: Spark.Dsl.Entity.anno(second)
+    end)
+  end
+
+  # Declarations that all constrain their args are accepted: whether two
+  # patterns or matchers overlap is undecidable.
+  defp ensure_distinct_transitions(traits, entity, dsl_state) do
+    command_by_name = Transformer.get_persisted(dsl_state, :commands)
+
+    traits
+    |> Enum.reject(&is_nil(&1.from))
+    |> Enum.group_by(&{&1.exec_step.command_name, MapSet.new(List.wrap(&1.from))})
+    |> Enum.each(fn {{command_name, _from}, declarations} ->
+      case Enum.split_with(declarations, &unconditional?(&1, command_by_name)) do
+        {[unconditional, another_unconditional | _], _} ->
+          raise_shared_transition!(
+            entity,
+            command_name,
+            another_unconditional,
+            unconditional,
+            "both apply on every run. Did you mean to declare one of them without `from`, " <>
+              "as a trait that only adds a property?"
+          )
+
+        {[unconditional], [conditional | _]} ->
+          raise_shared_transition!(
+            entity,
+            command_name,
+            conditional,
+            unconditional,
+            "#{inspect(unconditional.name)} applies on every run. " <>
+              "Did you mean to declare #{inspect(conditional.name)} without `from`, " <>
+              "as a trait that only adds a property, " <>
+              "or to constrain #{inspect(unconditional.name)} with a fixed value in `args_pattern`?"
+          )
+
+        _ ->
+          :ok
+      end
+    end)
+  end
+
+  defp raise_shared_transition!(entity, command_name, trait, unconditional, explanation) do
+    raise Spark.Error.DslError,
+      path: [:root, :trait, trait.name, entity],
+      message:
+        "#{inspect(trait.name)} and #{inspect(unconditional.name)} both replace " <>
+          "#{inspect(trait.from)} when #{inspect(command_name)} runs, and " <> explanation,
+      location: Spark.Dsl.Entity.anno(trait)
+  end
+
+  defp unconditional?(trait, command_by_name) do
+    params = Map.fetch!(command_by_name, trait.exec_step.command_name).params
+
+    is_nil(trait.exec_step.args_match) and
+      always_matches?(trait.exec_step.args_pattern || %{}, params)
+  end
+
+  # The args of a run carry every declared param, the nested params of a
+  # container included, so a placeholder on one matches on every run. A map
+  # held by any other param can miss the key.
+  defp always_matches?(pattern, params) do
+    placeholder = SeedFactory.Trait.placeholder()
+
+    Enum.all?(pattern, fn {key, value} ->
+      case {value, Map.fetch(params, key)} do
+        {^placeholder, {:ok, _param}} ->
+          true
+
+        {nested, {:ok, %{type: :container, params: nested_params}}}
+        when is_map(nested) and not is_struct(nested) ->
+          always_matches?(nested, nested_params)
+
+        _other ->
+          false
+      end
     end)
   end
 

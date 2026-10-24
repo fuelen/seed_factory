@@ -2034,6 +2034,371 @@ defmodule SeedFactory.SchemaTest do
       )
     end
 
+    test "raises when an additional property of a transition is declared with the same from" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> top_rated -> task defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          :top_rated and :done both replace :started when :complete_task runs, and :done applies on every run. Did you mean to declare :top_rated without `from`, as a trait that only adds a property, or to constrain :done with a fixed value in `args_pattern`?
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_task do
+              resolve(fn _ -> {:ok, %{task: %{}}} end)
+              produce :task
+            end
+
+            command :complete_task do
+              param :task, entity: :task
+              param :rating, value: 5
+              resolve(fn args -> {:ok, %{task: args.task}} end)
+              update :task
+            end
+
+            trait :started, :task do
+              exec :create_task
+            end
+
+            trait :done, :task do
+              from :started
+              exec :complete_task
+            end
+
+            trait :top_rated, :task do
+              from :started
+              exec :complete_task, args_pattern: %{rating: 5}
+            end
+
+            trait :low_rated, :task do
+              from :started
+              exec :complete_task, args_pattern: %{rating: 1}
+            end
+          end
+        end
+      )
+    end
+
+    test "raises when two unconditional transitions of a command share a from list in any order" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> archived -> ticket defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          :archived and :resolved both replace [:reopened, :open] when :close_ticket runs, and both apply on every run. Did you mean to declare one of them without `from`, as a trait that only adds a property?
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_ticket do
+              resolve(fn _ -> {:ok, %{ticket: %{}}} end)
+              produce :ticket
+            end
+
+            command :reopen_ticket do
+              param :ticket, entity: :ticket
+              resolve(fn args -> {:ok, %{ticket: args.ticket}} end)
+              update :ticket
+            end
+
+            command :close_ticket do
+              param :ticket, entity: :ticket
+              resolve(fn args -> {:ok, %{ticket: args.ticket}} end)
+              update :ticket
+            end
+
+            trait :open, :ticket do
+              exec :create_ticket
+            end
+
+            trait :reopened, :ticket do
+              from :open
+              exec :reopen_ticket
+            end
+
+            trait :resolved, :ticket do
+              from [:open, :reopened]
+              exec :close_ticket
+            end
+
+            trait :archived, :ticket do
+              from [:reopened, :open]
+              exec :close_ticket
+            end
+          end
+        end
+      )
+    end
+
+    test "a parameterized trait constrained only by its placeholder applies on every run" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> comment -> task defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          :comment and :rating both replace :started when :complete_task runs, and both apply on every run. Did you mean to declare one of them without `from`, as a trait that only adds a property?
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_task do
+              resolve(fn _ -> {:ok, %{task: %{}}} end)
+              produce :task
+            end
+
+            command :complete_task do
+              param :task, entity: :task
+              param :rating, value: 5
+              param :comment, value: "on time"
+              resolve(fn args -> {:ok, %{task: args.task}} end)
+              update :task
+            end
+
+            trait :started, :task do
+              exec :create_task
+            end
+
+            trait :rating, :task do
+              from :started
+              exec :complete_task, args_pattern: %{rating: _}
+            end
+
+            trait :comment, :task do
+              from :started
+              exec :complete_task, args_pattern: %{comment: _}
+            end
+          end
+        end
+      )
+    end
+
+    test "a parameterized trait constrained only by its placeholder is told to take a fixed value" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> top_rated -> task defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          :top_rated and :rating both replace :started when :complete_task runs, and :rating applies on every run. Did you mean to declare :top_rated without `from`, as a trait that only adds a property, or to constrain :rating with a fixed value in `args_pattern`?
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_task do
+              resolve(fn _ -> {:ok, %{task: %{}}} end)
+              produce :task
+            end
+
+            command :complete_task do
+              param :task, entity: :task
+              param :rating, value: 5
+              resolve(fn args -> {:ok, %{task: args.task}} end)
+              update :task
+            end
+
+            trait :started, :task do
+              exec :create_task
+            end
+
+            trait :rating, :task do
+              from :started
+              exec :complete_task, args_pattern: %{rating: _}
+            end
+
+            trait :top_rated, :task do
+              from :started
+              exec :complete_task, args_pattern: %{rating: 5}
+            end
+          end
+        end
+      )
+    end
+
+    test "a placeholder nested in a container param applies on every run" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> comment -> task defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          :comment and :rating both replace :started when :complete_task runs, and both apply on every run. Did you mean to declare one of them without `from`, as a trait that only adds a property?
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_task do
+              resolve(fn _ -> {:ok, %{task: %{}}} end)
+              produce :task
+            end
+
+            command :complete_task do
+              param :task, entity: :task
+
+              param :feedback do
+                param :rating, value: 5
+                param :comment, value: "on time"
+              end
+
+              resolve(fn args -> {:ok, %{task: args.task}} end)
+              update :task
+            end
+
+            trait :started, :task do
+              exec :create_task
+            end
+
+            trait :rating, :task do
+              from :started
+              exec :complete_task, args_pattern: %{feedback: %{rating: _}}
+            end
+
+            trait :comment, :task do
+              from :started
+              exec :complete_task, args_pattern: %{feedback: %{comment: _}}
+            end
+          end
+        end
+      )
+    end
+
+    test "two unconditional transitions are reported before a conditional one sharing their from" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> cancelled -> task defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          :cancelled and :done both replace :started when :finish_task runs, and both apply on every run. Did you mean to declare one of them without `from`, as a trait that only adds a property?
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_task do
+              resolve(fn _ -> {:ok, %{task: %{}}} end)
+              produce :task
+            end
+
+            command :finish_task do
+              param :task, entity: :task
+              param :late, value: false
+              resolve(fn args -> {:ok, %{task: args.task}} end)
+              update :task
+            end
+
+            trait :started, :task do
+              exec :create_task
+            end
+
+            trait :done, :task do
+              from :started
+              exec :finish_task
+            end
+
+            trait :done_late, :task do
+              from :started
+              exec :finish_task, args_pattern: %{late: true}
+            end
+
+            trait :cancelled, :task do
+              from :started
+              exec :finish_task
+            end
+          end
+        end
+      )
+    end
+
+    test "an empty args_pattern does not tell transitions apart" do
+      assert_dsl_error(
+        """
+        [SeedFactory.SchemaTest.MySchema]
+        root -> trait -> cancelled -> task defined in test/seed_factory/schema_test.exs:<LINE_NUMBER>::
+          :cancelled and :done both replace :started when :finish_task runs, and both apply on every run. Did you mean to declare one of them without `from`, as a trait that only adds a property?
+        """,
+        fn ->
+          defmodule MySchema do
+            use SeedFactory.Schema
+
+            command :create_task do
+              resolve(fn _ -> {:ok, %{task: %{}}} end)
+              produce :task
+            end
+
+            command :finish_task do
+              param :task, entity: :task
+              resolve(fn args -> {:ok, %{task: args.task}} end)
+              update :task
+            end
+
+            trait :started, :task do
+              exec :create_task
+            end
+
+            trait :done, :task do
+              from :started
+              exec :finish_task
+            end
+
+            trait :cancelled, :task do
+              from :started
+              exec :finish_task, args_pattern: %{}
+            end
+          end
+        end
+      )
+    end
+
+    test "transitions of a command from the same trait are allowed when told apart by args" do
+      defmodule ExclusiveTransitionsSchema do
+        use SeedFactory.Schema
+
+        command :create_doc do
+          resolve(fn _ -> {:ok, %{doc: %{}}} end)
+          produce :doc
+        end
+
+        command :review_doc do
+          param :doc, entity: :doc
+          param :decision, value: :approve
+          param :reason, value: "incomplete"
+          param :details, value: %{}
+          resolve(fn args -> {:ok, %{doc: args.doc}} end)
+          update :doc
+        end
+
+        trait :submitted, :doc do
+          exec :create_doc
+        end
+
+        trait :approved, :doc do
+          from :submitted
+          exec :review_doc, args_pattern: %{decision: :approve}
+        end
+
+        trait :rejected, :doc do
+          from :submitted
+          exec :review_doc, args_pattern: %{decision: :reject}
+        end
+
+        trait :deferral_reason, :doc do
+          from :submitted
+          exec :review_doc, args_pattern: %{decision: :defer, reason: _}
+        end
+
+        trait :note, :doc do
+          from :submitted
+          exec :review_doc, args_pattern: %{details: %{note: _}}
+        end
+
+        trait :escalated, :doc do
+          from :submitted
+
+          exec :review_doc do
+            args_match(fn args -> args.decision == :escalate end)
+            generate_args(fn -> %{decision: :escalate} end)
+          end
+        end
+      end
+    end
+
     test "include_schema merges entities from included schema" do
       defmodule BaseSchema do
         use SeedFactory.Schema

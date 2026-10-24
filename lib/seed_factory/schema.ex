@@ -165,6 +165,9 @@ defmodule SeedFactory.Schema do
   For example, `from :pending` requires `:pending`; `from [:pending, :active]` allows either.
   Applying the new trait removes all listed source traits that are present.
   Omit `from` to add a trait without replacing another.
+  Two transitions of one command from the same traits would move the entity into two states at once,
+  so the schema does not compile unless each of them declares an `args_match` or an `args_pattern`
+  constraining more than the `_` of a parameterized trait.
 
   ```elixir
   trait :pending, :user do
