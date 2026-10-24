@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Features
+
+- Emit a `[:seed_factory, :resolve]` telemetry span around every command's
+  resolver.
+
 ### Changes
 
 - A schema no longer compiles when one command has two transitions from the

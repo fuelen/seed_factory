@@ -231,6 +231,20 @@ defmodule SeedFactory do
   Current traits:
     %{company: []}
   ```
+
+  ## Telemetry
+
+  Every command's resolver runs inside a `:telemetry.span/3` named `[:seed_factory, :resolve]`:
+
+  * `[:seed_factory, :resolve, :start]` — measurements: `system_time`, `monotonic_time`
+  * `[:seed_factory, :resolve, :stop]` — measurements: `duration`, `monotonic_time`
+  * `[:seed_factory, :resolve, :exception]` — measurements as for `:stop`, plus `kind`, `reason` and
+    `stacktrace` in metadata. For an exception raised by the resolver and for an `{:error, _}` it
+    returned, `kind` is `:error` and `reason` is `SeedFactory.ExecError`.
+
+  Metadata of every event: `command` — the name of the command, `caller` — the `produce` or `exec`
+  call the command runs for, e.g. `{:produce, [user: [:active]]}` or `{:exec, :create_user}`, and
+  `telemetry_span_context` added by `:telemetry.span/3`.
   """
   alias SeedFactory.Context
   alias SeedFactory.Requirements
@@ -545,7 +559,13 @@ defmodule SeedFactory do
         &Context.fetch_entity!(context, &1)
       )
 
-    resolver_output = resolve!(command, args, context.__seed_factory_meta__)
+    meta = context.__seed_factory_meta__
+    metadata = %{command: command.name, caller: meta.current_execution.caller}
+
+    resolver_output =
+      :telemetry.span([:seed_factory, :resolve], metadata, fn ->
+        {resolve!(command, args, meta), metadata}
+      end)
 
     context
     |> Context.exec_producing_instructions(command, resolver_output)
